@@ -4,7 +4,11 @@ fn main() -> Result<()> {
     let conn = Connection::open("astrology_journal.db")?;
     let mut stmt = conn.prepare("SELECT name, status FROM Clients")?;
     let clients = stmt.query_map([], |row| {
-        Ok(format!("{}: {}", row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        Ok(format!(
+            "{}: {}",
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?
+        ))
     })?;
 
     println!("--- Current Clients ---");
@@ -14,7 +18,12 @@ fn main() -> Result<()> {
 
     let mut stmt = conn.prepare("SELECT id, client_id, question FROM Readings")?;
     let readings = stmt.query_map([], |row| {
-        Ok(format!("ID: {}, ClientID: {}, Q: {}", row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?))
+        Ok(format!(
+            "ID: {}, ClientID: {}, Q: {}",
+            row.get::<_, i64>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, String>(2)?
+        ))
     })?;
 
     println!("\n--- Current Readings ---");
