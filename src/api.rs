@@ -1,12 +1,12 @@
-use serde::{Deserialize, Serialize};
-use reqwest::Client;
-use std::env;
 use chrono::{Datelike, NaiveDate};
 use console::style;
+use rand::Rng;
+use reqwest::Client;
+use reqwest::{Response, StatusCode};
+use serde::{Deserialize, Serialize};
+use std::env;
 use std::time::Duration;
 use tokio::time::sleep;
-use rand::Rng;
-use reqwest::{Response, StatusCode};
 
 const MAX_RETRIES: u32 = 10;
 const BACKOFF_BASE_MS: u64 = 30_000;
@@ -90,7 +90,10 @@ pub struct GeminiErrorBody {
 
 #[derive(Debug)]
 pub enum GeminiError {
-    RateLimited { retry_after_secs: Option<u64>, message: Option<String> },
+    RateLimited {
+        retry_after_secs: Option<u64>,
+        message: Option<String>,
+    },
     ServerError(String),
     RequestFailed(reqwest::Error),
     ParseError(String),
@@ -99,8 +102,14 @@ pub enum GeminiError {
 impl std::fmt::Display for GeminiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::RateLimited { retry_after_secs, message } =>
-                write!(f, "Rate limited (retry_after={:?}s, message={:?})", retry_after_secs, message),
+            Self::RateLimited {
+                retry_after_secs,
+                message,
+            } => write!(
+                f,
+                "Rate limited (retry_after={:?}s, message={:?})",
+                retry_after_secs, message
+            ),
             Self::ServerError(msg) => write!(f, "Server error: {}", msg),
             Self::RequestFailed(e) => write!(f, "Request failed: {}", e),
             Self::ParseError(msg) => write!(f, "Parse error: {}", msg),
@@ -150,7 +159,10 @@ async fn call_gemini_once(
             if let Ok(err_body) = response.json::<GeminiErrorEnvelope>().await {
                 error_message = Some(err_body.error.message);
             }
-            Err(GeminiError::RateLimited { retry_after_secs: retry_after, message: error_message })
+            Err(GeminiError::RateLimited {
+                retry_after_secs: retry_after,
+                message: error_message,
+            })
         }
         status if status.is_server_error() => {
             let msg = response
@@ -161,7 +173,10 @@ async fn call_gemini_once(
         }
         status => {
             let msg = response.text().await.unwrap_or_default();
-            Err(GeminiError::ServerError(format!("Unexpected status {}: {}", status, msg)))
+            Err(GeminiError::ServerError(format!(
+                "Unexpected status {}: {}",
+                status, msg
+            )))
         }
     }
 }
@@ -172,7 +187,10 @@ fn parse_retry_seconds_from_message(message: &str) -> Option<f64> {
     let lower = message.to_lowercase();
     if let Some(idx) = lower.find("retry in ") {
         let after = &lower[idx + 9..]; // skip "retry in "
-        let num_str: String = after.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+        let num_str: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
         if !num_str.is_empty() {
             return num_str.parse::<f64>().ok();
         }
@@ -180,7 +198,10 @@ fn parse_retry_seconds_from_message(message: &str) -> Option<f64> {
     // Also try "retry after <number>s"
     if let Some(idx) = lower.find("retry after ") {
         let after = &lower[idx + 12..];
-        let num_str: String = after.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+        let num_str: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
         if !num_str.is_empty() {
             return num_str.parse::<f64>().ok();
         }
@@ -209,9 +230,8 @@ fn backoff_duration(attempt: u32, hint_secs: Option<u64>, message: Option<&str>)
         .min(BACKOFF_MAX_MS);
 
     let jitter_ms = rand::thread_rng().gen_range(0..=exponential);
-    let wait = Duration::from_millis(jitter_ms);
 
-    wait
+    Duration::from_millis(jitter_ms)
 }
 
 pub async fn call_gemini_with_retry(
@@ -221,23 +241,41 @@ pub async fn call_gemini_with_retry(
     model: &str,
     max_output_tokens: u32,
 ) -> Result<String, GeminiError> {
-    let api_key = env::var("GEMINI_API_KEY").unwrap_or_default().trim().trim_matches('"').to_string();
+    let api_key = env::var("GEMINI_API_KEY")
+        .unwrap_or_default()
+        .trim()
+        .trim_matches('"')
+        .to_string();
     let combined_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
 
     let request_body = GeminiRequest {
         contents: vec![GeminiContent {
             role: "user".to_string(),
-            parts: vec![GeminiPart { text: combined_prompt }],
+            parts: vec![GeminiPart {
+                text: combined_prompt,
+            }],
         }],
         generation_config: GenerationConfig {
             max_output_tokens,
             temperature: 0.0,
         },
         safety_settings: vec![
-            SafetySetting { category: "HARM_CATEGORY_HARASSMENT".to_string(), threshold: "BLOCK_NONE".to_string() },
-            SafetySetting { category: "HARM_CATEGORY_HATE_SPEECH".to_string(), threshold: "BLOCK_NONE".to_string() },
-            SafetySetting { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT".to_string(), threshold: "BLOCK_NONE".to_string() },
-            SafetySetting { category: "HARM_CATEGORY_DANGEROUS_CONTENT".to_string(), threshold: "BLOCK_NONE".to_string() },
+            SafetySetting {
+                category: "HARM_CATEGORY_HARASSMENT".to_string(),
+                threshold: "BLOCK_NONE".to_string(),
+            },
+            SafetySetting {
+                category: "HARM_CATEGORY_HATE_SPEECH".to_string(),
+                threshold: "BLOCK_NONE".to_string(),
+            },
+            SafetySetting {
+                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT".to_string(),
+                threshold: "BLOCK_NONE".to_string(),
+            },
+            SafetySetting {
+                category: "HARM_CATEGORY_DANGEROUS_CONTENT".to_string(),
+                threshold: "BLOCK_NONE".to_string(),
+            },
         ],
     };
 
@@ -248,10 +286,19 @@ pub async fn call_gemini_with_retry(
                     let input = usage.prompt_token_count.unwrap_or(0);
                     let output = usage.candidates_token_count.unwrap_or(0);
                     let total = usage.total_token_count.unwrap_or(input + output);
-                    println!("\n{}", style(format!("[+] Telemetry - Input Tokens: {}, Output Tokens: {}, Total: {}", input, output, total)).green().bold());
+                    println!(
+                        "\n{}",
+                        style(format!(
+                            "[+] Telemetry - Input Tokens: {}, Output Tokens: {}, Total: {}",
+                            input, output, total
+                        ))
+                        .green()
+                        .bold()
+                    );
                 }
 
-                let text = response.candidates
+                let text = response
+                    .candidates
                     .unwrap_or_default()
                     .into_iter()
                     .next()
@@ -260,12 +307,21 @@ pub async fn call_gemini_with_retry(
                     .ok_or_else(|| GeminiError::ParseError("Empty candidates".to_string()))?;
                 return Ok(text);
             }
-            Err(GeminiError::RateLimited { retry_after_secs, message }) => {
+            Err(GeminiError::RateLimited {
+                retry_after_secs,
+                message,
+            }) => {
                 if attempt == MAX_RETRIES - 1 {
-                    return Err(GeminiError::RateLimited { retry_after_secs, message });
+                    return Err(GeminiError::RateLimited {
+                        retry_after_secs,
+                        message,
+                    });
                 }
                 let wait = backoff_duration(attempt, retry_after_secs, message.as_deref());
-                println!("{}", style(format!("[!] API Cadence Adjustment: Waiting {:?}...", wait)).yellow());
+                println!(
+                    "{}",
+                    style(format!("[!] API Cadence Adjustment: Waiting {:?}...", wait)).yellow()
+                );
                 sleep(wait).await;
             }
             Err(e) => return Err(e),
@@ -279,7 +335,15 @@ pub async fn extract_target_date(client: &Client, question: &str, current_date: 
     let system_prompt = "[PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY] Extract a target date in YYYY-MM-DD format.";
     let user_prompt = format!("Current Date: {}\nQuestion: {}", current_date, question);
 
-    match call_gemini_with_retry(client, system_prompt.to_string(), user_prompt, "gemini-3.1-flash-lite", 50).await {
+    match call_gemini_with_retry(
+        client,
+        system_prompt.to_string(),
+        user_prompt,
+        "gemini-3.1-flash-lite",
+        50,
+    )
+    .await
+    {
         Ok(text) => {
             let text = text.trim();
             if text.len() >= 10 && text.contains("-") {
