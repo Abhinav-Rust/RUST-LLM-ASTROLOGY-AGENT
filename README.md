@@ -1,6 +1,5 @@
 # RUST-LLM-ASTROLOGY-AGENT
 
-[![build](https://github.com/your-username/rust-llm-astrology-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/rust-llm-astrology-agent/actions)
 [![clippy](https://img.shields.io/badge/clippy-passing-success.svg)](https://github.com/your-username/rust-llm-astrology-agent/actions)
 [![Rust](https://img.shields.io/badge/Rust-1.80+-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
