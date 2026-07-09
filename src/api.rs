@@ -211,6 +211,7 @@ fn parse_retry_seconds_from_message(message: &str) -> Option<f64> {
 
 fn backoff_duration(attempt: u32, hint_secs: Option<u64>, message: Option<&str>) -> Duration {
     // Priority 1: Parse dynamic wait time from the error message body
+    #[allow(clippy::collapsible_if)]
     if let Some(msg) = message {
         if let Some(wait_secs) = parse_retry_seconds_from_message(msg) {
             let with_buffer = (wait_secs.ceil() as u64) + 2;
@@ -356,6 +357,7 @@ pub async fn extract_target_date(client: &Client, question: &str, current_date: 
 }
 
 fn fallback_date(current_date: &str) -> String {
+    #[allow(clippy::collapsible_if)]
     if let Ok(date) = NaiveDate::parse_from_str(current_date, "%Y-%m-%d") {
         if let Some(next_year) = date.with_year(date.year() + 1) {
             return next_year.format("%Y-%m-%d").to_string();

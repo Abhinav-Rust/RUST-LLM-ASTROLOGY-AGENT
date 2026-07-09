@@ -1,22 +1,19 @@
-# Astro Agent — Multi-Agent LLM Pipeline (Showcase)
+# rust-llm-astrology-agent
+
+[![build](https://github.com/your-username/rust-llm-astrology-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/rust-llm-astrology-agent/actions)
+[![clippy](https://img.shields.io/badge/clippy-passing-success.svg)](https://github.com/your-username/rust-llm-astrology-agent/actions)
+[![Rust](https://img.shields.io/badge/Rust-1.80+-blue.svg)](https://www.rust-lang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > **⚠️ Domain IP Redacted** — All proprietary astrological logic (master prompts, Dasha calculations, Yoga detection, and the Vedic rules engine) has been stripped from this repository. Function signatures and data structures are preserved as stubs to demonstrate the architecture. This repo is published as a **structural showcase only**.
 
 ---
 
-## 🛠️ Upgrades & Improvements (April 2026)
+## About
 
-This repository has been refactored for maximum leaness and architectural clarity. Key upgrades include:
-- **Zero-Warning Build**: Fixed all `unused_assignments` and `dead_code` warnings.
-- **Library/Binary Separation**: Migrated to a `src/lib.rs` architecture to share logic between the main agent and helper utilities.
-- **Dependency Optimization**: Removed the heavy `swiss-eph` C-dependency and purged ~10MB of unrelated code.
-- **Modernized Layout**: Reorganized standalone utilities into `src/bin/` for standard Rust compliance.
+**A fault-tolerant, multi-agent LLM pipeline built in Rust, showcased via a Vedic Astrology reasoning engine.**
 
----
-
-## What This Is
-
-A **Rust-based, high-performance, fault-tolerant multi-agent LLM pipeline** built to orchestrate complex, multi-step AI workflows against rate-limited APIs. The system was originally designed for production Vedic astrology readings but the patterns generalize to any domain requiring:
+This project demonstrates a high-performance system designed to orchestrate complex, multi-step AI workflows against rate-limited APIs. While the system was originally deployed for production Vedic astrology readings, the core patterns and architecture generalize to any complex multi-agent domain requiring:
 
 - **Multi-agent orchestration** — Agent 1 extracts structured parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data.
 - **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
@@ -25,78 +22,11 @@ A **Rust-based, high-performance, fault-tolerant multi-agent LLM pipeline** buil
 
 ---
 
-## Architecture
+## Architecture & Engineering
 
-```
-┌──────────────┐     ┌─────────────────┐     ┌────────────────────┐
-│  CLI / TUI   │────▶│   Math Engine   │────▶│  Rules Engine      │
-│  (main.rs)   │     │   (math.rs)     │     │  (rules.rs)        │
-│              │     │   [STUBBED]     │     │  [STUBBED]         │
-└──────┬───────┘     └─────────────────┘     └────────┬───────────┘
-       │                                              │
-       │         ┌──────────────────┐                 │
-       │         │  Dasha Engine    │◀────────────────┘
-       │         │  (dasha.rs)      │
-       │         │  [STUBBED]       │
-       │         └────────┬─────────┘
-       │                  │
-       ▼                  ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                     API Layer (api.rs)                           │
-│  • Gemini API integration with structured request/response      │
-│  • 10-retry loop with 3-tier backoff strategy                   │
-│  • Dynamic rate-limit parsing from error message bodies         │
-│  • Retry-After header detection                                 │
-│  • Exponential jitter fallback (30s floor, 120s cap)            │
-└──────────────────────────────┬───────────────────────────────────┘
-                               │
-                     ┌─────────▼─────────┐
-                     │   Geo Resolver    │
-                     │   (geo.rs)        │
-                     │   Nominatim +     │
-                     │   tzf-rs offline  │
-                     │   TZ resolution   │
-                     └───────────────────┘
-```
+The comprehensive architecture (including our 3-tier API backoff strategy, multi-agent pipeline, and data anonymization layer) has been moved to our documentation folder.
 
----
-
-## Key Engineering Patterns
-
-### 1. Custom Rate-Limit Backoff (3-Tier)
-
-The API layer (`api.rs`) implements a production-grade retry strategy:
-
-| Priority | Source | Mechanism |
-|----------|--------|-----------|
-| 1st | Error message body | Regex-parses `"retry in Xs"` / `"retry after Xs"` from Gemini's JSON error payload |
-| 2nd | HTTP header | Reads the standard `Retry-After` response header |
-| 3rd | Exponential jitter | `base_ms * 2^attempt` with random jitter, floored at 30s, capped at 120s |
-
-### 2. Connection Tearing
-
-Free-tier APIs enforce per-minute rate limits. Holding idle connections across 30–60s cooldowns causes `connection reset` errors. The client is configured to aggressively recycle:
-
-```rust
-reqwest::Client::builder()
-    .tcp_keepalive(None)           // Disable TCP keepalive
-    .pool_idle_timeout(5s)         // Tear idle connections after 5s
-    .pool_max_idle_per_host(1)     // Max 1 idle connection per host
-    .timeout(120s)                 // Allow long generation times
-```
-
-### 3. Multi-Agent Pipeline
-
-| Agent | Role | Model |
-|-------|------|-------|
-| Agent 1 | Structured data extraction (temporal target parsing) | `gemini-3.1-flash-lite` |
-| Agent 2 | Long-form analytical generation conditioned on deterministic data | `gemini-3.1-flash-lite` |
-
-A mandatory 31-second inter-agent cooldown prevents back-to-back rate limiting on free-tier quotas.
-
-### 4. Data Anonymization Layer
-
-Client PII is stripped from the prompt payload before API submission — names are replaced with generic identifiers so the external LLM never sees real client data.
+Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mermaid.js diagrams.
 
 ---
 
@@ -141,7 +71,7 @@ src/
 export GEMINI_API_KEY="your-key-here"
 
 # Build and run
-cargo run --bin astro_agent
+cargo run --bin rust_llm_astrology_agent
 ```
 
 > **Note:** The stubbed math/rules/dasha modules return dummy data. The pipeline will execute end-to-end but the generated readings will lack real astronomical input.

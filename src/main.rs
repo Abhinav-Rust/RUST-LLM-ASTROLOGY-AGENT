@@ -1,5 +1,5 @@
-use astro_agent::{api, dasha, geo, math, rules, utils};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use rust_llm_astrology_agent::{api, dasha, geo, math, rules, utils};
 use console::style;
 use dialoguer::{Confirm, Input, Select};
 use rusqlite::{Connection, OptionalExtension, Result, params};
