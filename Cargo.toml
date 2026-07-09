@@ -1,5 +1,5 @@
 [package]
-name = "astro_agent"
+name = "rust-llm-astrology-agent"
 version = "0.1.0"
 edition = "2024"
 
@@ -19,11 +19,11 @@ open = "5.3.3"
 rand = "0.8"
 
 [lib]
-name = "astro_agent"
+name = "rust_llm_astrology_agent"
 path = "src/lib.rs"
 
 [[bin]]
-name = "astro_agent"
+name = "rust_llm_astrology_agent"
 path = "src/main.rs"
 
 [[bin]]
