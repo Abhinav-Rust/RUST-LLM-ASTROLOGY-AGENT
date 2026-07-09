@@ -1,4 +1,4 @@
-# rust-llm-astrology-agent
+# RUST-LLM-ASTROLOGY-AGENT
 
 [![build](https://github.com/your-username/rust-llm-astrology-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/rust-llm-astrology-agent/actions)
 [![clippy](https://img.shields.io/badge/clippy-passing-success.svg)](https://github.com/your-username/rust-llm-astrology-agent/actions)
