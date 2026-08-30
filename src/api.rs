@@ -365,3 +365,34 @@ fn fallback_date(current_date: &str) -> String {
     }
     "2030-01-01".to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_retry_seconds_from_message() {
+        assert_eq!(
+            parse_retry_seconds_from_message("Resource exhausted, please retry in 15.5s."),
+            Some(15.5)
+        );
+        assert_eq!(
+            parse_retry_seconds_from_message("Quota exceeded. Please retry in 30s"),
+            Some(30.0)
+        );
+        assert_eq!(
+            parse_retry_seconds_from_message("Rate limit reached, retry after 10s"),
+            Some(10.0)
+        );
+        assert_eq!(
+            parse_retry_seconds_from_message("Random error message with no retry info"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_fallback_date() {
+        assert_eq!(fallback_date("2025-05-10"), "2026-05-10");
+        assert_eq!(fallback_date("invalid-date"), "2030-01-01");
+    }
+}

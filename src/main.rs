@@ -1,8 +1,8 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use rust_llm_astrology_agent::{api, dasha, geo, math, rules, utils};
 use console::style;
 use dialoguer::{Confirm, Input, Select};
 use rusqlite::{Connection, OptionalExtension, Result, params};
+use rust_llm_astrology_agent::{api, dasha, geo, math, rules, utils};
 use std::env;
 use std::io::{self, Write};
 use tokio::io::AsyncWriteExt;
@@ -34,6 +34,15 @@ fn init_db() -> Result<Connection> {
             full_ai_response TEXT NOT NULL,
             FOREIGN KEY(client_id) REFERENCES Clients(id)
         )",
+        (),
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clients_name ON Clients(name)",
+        (),
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_readings_client_id ON Readings(client_id)",
         (),
     )?;
     Ok(conn)
@@ -95,7 +104,14 @@ fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &st
     )?;
     Ok(())
 }
-type ClientRecord = (i64, String, String, String, Option<String>, Option<String>);
+pub struct ClientRecord {
+    pub id: i64,
+    pub name: String,
+    pub city: String,
+    pub status: String,
+    pub dob: Option<String>,
+    pub time: Option<String>,
+}
 
 fn view_clients(conn: &Connection, results: Option<Vec<ClientRecord>>) -> Result<()> {
     let list = match results {
@@ -103,14 +119,14 @@ fn view_clients(conn: &Connection, results: Option<Vec<ClientRecord>>) -> Result
         None => {
             let mut stmt = conn.prepare("SELECT id, name, city, status, dob, time FROM Clients")?;
             stmt.query_map([], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                ))
+                Ok(ClientRecord {
+                    id: row.get::<_, i64>(0)?,
+                    name: row.get::<_, String>(1)?,
+                    city: row.get::<_, String>(2)?,
+                    status: row.get::<_, String>(3)?,
+                    dob: row.get::<_, Option<String>>(4)?,
+                    time: row.get::<_, Option<String>>(5)?,
+                })
             })?
             .collect::<Result<Vec<_>, _>>()?
         }
@@ -127,12 +143,12 @@ fn view_clients(conn: &Connection, results: Option<Vec<ClientRecord>>) -> Result
     );
     println!("{}", "-".repeat(75));
 
-    for (id, name, city, status, dob, time) in list {
-        let dob_disp = dob.unwrap_or_else(|| "N/A".to_string());
-        let time_disp = time.unwrap_or_else(|| "N/A".to_string());
+    for client in list {
+        let dob_disp = client.dob.unwrap_or_else(|| "N/A".to_string());
+        let time_disp = client.time.unwrap_or_else(|| "N/A".to_string());
         println!(
             "{:<4} | {:<20} | {:<12} | {:<10} | {:<10} | {:<8}",
-            id, name, city, status, dob_disp, time_disp
+            client.id, client.name, client.city, client.status, dob_disp, time_disp
         );
     }
     println!();
@@ -150,14 +166,14 @@ fn search_clients(conn: &Connection) -> Result<()> {
     let query_term = format!("%{}%", search_term);
     let results = stmt
         .query_map(params![query_term], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, Option<String>>(5)?,
-            ))
+            Ok(ClientRecord {
+                id: row.get::<_, i64>(0)?,
+                name: row.get::<_, String>(1)?,
+                city: row.get::<_, String>(2)?,
+                status: row.get::<_, String>(3)?,
+                dob: row.get::<_, Option<String>>(4)?,
+                time: row.get::<_, Option<String>>(5)?,
+            })
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -262,14 +278,40 @@ fn launch_wizard() -> (String, String, String, String, String, u32) {
         .with_prompt("Enter Client Name")
         .interact_text()
         .unwrap();
-    let date: String = Input::new()
-        .with_prompt("Enter Date of Birth (DD/MM/YYYY)")
-        .interact_text()
-        .unwrap();
-    let time: String = Input::new()
-        .with_prompt("Enter Time of Birth (e.g., 10:45 AM)")
-        .interact_text()
-        .unwrap();
+
+    let date: String = loop {
+        let input: String = Input::new()
+            .with_prompt("Enter Date of Birth (DD/MM/YYYY)")
+            .interact_text()
+            .unwrap();
+        if NaiveDate::parse_from_str(&input, "%d/%m/%Y").is_ok() {
+            break input;
+        }
+        println!(
+            "{}",
+            style("Invalid date format. Please use DD/MM/YYYY (e.g., 15/08/1990).").red()
+        );
+    };
+
+    let time: String = loop {
+        let input: String = Input::new()
+            .with_prompt("Enter Time of Birth (e.g., 10:45 AM or 14:30)")
+            .interact_text()
+            .unwrap();
+        if NaiveTime::parse_from_str(&input, "%I:%M %p").is_ok()
+            || NaiveTime::parse_from_str(&input, "%H:%M").is_ok()
+        {
+            break input;
+        }
+        println!(
+            "{}",
+            style(
+                "Invalid time format. Please use HH:MM AM/PM or HH:MM (e.g., 10:45 AM or 14:30)."
+            )
+            .red()
+        );
+    };
+
     let city: String = Input::new()
         .with_prompt("Enter City of Birth")
         .interact_text()
@@ -288,7 +330,15 @@ fn launch_wizard() -> (String, String, String, String, String, u32) {
     (name, date, time, city, question, target_words)
 }
 
-type ReadingParams = (String, String, String, String, String, u32);
+pub struct ReadingParams {
+    pub name: String,
+    pub date: String,
+    pub time: String,
+    pub city: String,
+    pub question: String,
+    pub target_words: u32,
+}
+
 fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
     println!("\n--- Fast-Track Existing Client ---");
     let search_name: String = Input::new()
@@ -302,18 +352,18 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
     }
 
     let mut stmt =
-        conn.prepare("SELECT id, name, dob, time, city, status FROM Clients WHERE name LIKE ?")?;
+        conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE name LIKE ?")?;
     let query_term = format!("%{}%", search_name);
-    let results: Vec<_> = stmt
+    let results: Vec<ClientRecord> = stmt
         .query_map(params![query_term], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, Option<String>>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-            ))
+            Ok(ClientRecord {
+                id: row.get::<_, i64>(0)?,
+                name: row.get::<_, String>(1)?,
+                city: row.get::<_, String>(2)?,
+                status: row.get::<_, String>(3)?,
+                dob: row.get::<_, Option<String>>(4)?,
+                time: row.get::<_, Option<String>>(5)?,
+            })
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -323,14 +373,14 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
     }
 
     let target_id = if results.len() == 1 {
-        results[0].0
+        results[0].id
     } else {
-        for (id, name, dob_opt, time_opt, city, _) in &results {
-            let dob_disp = dob_opt.as_deref().unwrap_or("N/A");
-            let time_disp = time_opt.as_deref().unwrap_or("N/A");
+        for client in &results {
+            let dob_disp = client.dob.as_deref().unwrap_or("N/A");
+            let time_disp = client.time.as_deref().unwrap_or("N/A");
             println!(
                 "[{}] {} - DOB: {} | Time: {} | Place: {}",
-                id, name, dob_disp, time_disp, city
+                client.id, client.name, dob_disp, time_disp, client.city
             );
         }
 
@@ -348,10 +398,10 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
         }
     };
 
-    let client_opt = results.into_iter().find(|r| r.0 == target_id);
+    let client_opt = results.into_iter().find(|r| r.id == target_id);
 
-    if let Some((_, name, dob_opt, time_opt, city, status)) = client_opt {
-        if status == "Refused" {
+    if let Some(client) = client_opt {
+        if client.status == "Refused" {
             println!(
                 "{}",
                 style("This client is marked as 'Refused'. Fast-Track denied.")
@@ -361,8 +411,8 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
             return Ok(None);
         }
 
-        let dob = dob_opt.unwrap_or_default();
-        let time = time_opt.unwrap_or_default();
+        let dob = client.dob.unwrap_or_default();
+        let time = client.time.unwrap_or_default();
 
         if dob.is_empty() || time.is_empty() {
             println!("{}", style("Incomplete Profile: Missing DOB or Time. Please use the New Reading wizard for this client.").red());
@@ -371,7 +421,7 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
 
         println!(
             "{}",
-            style(format!("[+] 🚀 Fast-Tracking Reading for: {}", name))
+            style(format!("[+] 🚀 Fast-Tracking Reading for: {}", client.name))
                 .green()
                 .bold()
         );
@@ -387,7 +437,14 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
             .unwrap();
         let target_words: u32 = words_str.parse().unwrap_or(500);
 
-        Ok(Some((name, dob, time, city, question, target_words)))
+        Ok(Some(ReadingParams {
+            name: client.name,
+            date: dob,
+            time,
+            city: client.city,
+            question,
+            target_words,
+        }))
     } else {
         println!("Client ID not found.");
         Ok(None)
@@ -532,7 +589,7 @@ async fn execute_reading_flow(
         crate::api::extract_target_date(&client, &question, &current_date).await;
 
     println!("[*] Agent 1 Complete. Initiating 31-second API cooldown to prevent rate-limiting...");
-    std::thread::sleep(std::time::Duration::from_secs(31));
+    tokio::time::sleep(std::time::Duration::from_secs(31)).await;
 
     let target_date = NaiveDate::parse_from_str(&extracted_target_date_str, "%Y-%m-%d")
         .unwrap_or_else(|_| {
@@ -709,11 +766,17 @@ async fn main() {
                 wait_for_enter();
             }
             1 => {
-                if let Ok(Some((name, date, time, city, question, target_words))) =
-                    fast_track_reading(&conn)
-                {
-                    execute_reading_flow(&conn, name, date, time, city, question, target_words)
-                        .await;
+                if let Ok(Some(params)) = fast_track_reading(&conn) {
+                    execute_reading_flow(
+                        &conn,
+                        params.name,
+                        params.date,
+                        params.time,
+                        params.city,
+                        params.question,
+                        params.target_words,
+                    )
+                    .await;
                 }
                 wait_for_enter();
             }
