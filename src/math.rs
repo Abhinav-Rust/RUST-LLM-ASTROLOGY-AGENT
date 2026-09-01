@@ -3,14 +3,14 @@
 // planetary longitude computation, house cusp calculation, and Parivartan Yoga detection.
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum System {
     Vedic,
     KP,
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum HouseSystem {
     Placidus,
     #[default]
@@ -19,6 +19,7 @@ pub enum HouseSystem {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct BirthDetails {
     pub date: String,
     pub time: String,
@@ -30,6 +31,7 @@ pub struct BirthDetails {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub struct PlanetData {
     pub name: String,
     pub longitude: f64,
@@ -37,6 +39,7 @@ pub struct PlanetData {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct AstroData {
     pub system: System,
     pub planets: Vec<PlanetData>,
@@ -74,4 +77,39 @@ pub fn detect_parivartan_yogas(_planets: &[PlanetData]) -> String {
     // IP REDACTED: Deterministic planetary calculations handled here.
     // Original implementation detected mutual sign exchanges (Parivartan Yogas) between planets.
     String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_astrology_stub() {
+        let details = BirthDetails {
+            date: "01/01/2000".to_string(),
+            time: "12:00".to_string(),
+            latitude: 51.5,
+            longitude: -0.1,
+            timezone: 0.0,
+            system: System::Vedic,
+            house_system: HouseSystem::WholeSign,
+        };
+
+        let result = calculate_astrology(details);
+        assert!(result.is_ok());
+        let data = result.unwrap();
+        assert_eq!(data.planets.len(), 9);
+        assert_eq!(data.house_cusps.len(), 12);
+        assert_eq!(data.system, System::Vedic);
+    }
+
+    #[test]
+    fn test_detect_parivartan_yogas_stub() {
+        let planets = vec![PlanetData {
+            name: "Moon".to_string(),
+            longitude: 100.0,
+            speed: 13.0,
+        }];
+        assert_eq!(detect_parivartan_yogas(&planets), "");
+    }
 }

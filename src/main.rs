@@ -104,6 +104,7 @@ fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &st
     )?;
     Ok(())
 }
+
 pub struct ClientRecord {
     pub id: i64,
     pub name: String,
@@ -156,10 +157,13 @@ fn view_clients(conn: &Connection, results: Option<Vec<ClientRecord>>) -> Result
 }
 
 fn search_clients(conn: &Connection) -> Result<()> {
-    let search_term: String = Input::new()
+    let search_term: String = match Input::new()
         .with_prompt("Enter part or all of the client's name")
         .interact_text()
-        .unwrap();
+    {
+        Ok(val) => val,
+        Err(_) => return Ok(()),
+    };
 
     let mut stmt =
         conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE name LIKE ?")?;
@@ -190,7 +194,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
     let id: i64 = Input::new()
         .with_prompt("Enter the ID of the client (or type 0 to cancel)")
         .interact_text()
-        .unwrap();
+        .unwrap_or_default();
 
     if id == 0 {
         println!("Action cancelled.");
@@ -198,46 +202,52 @@ fn edit_client(conn: &Connection) -> Result<()> {
     }
 
     let fields = &["Name", "City", "Status (Active/Refused)"];
-    let selection = Select::new()
+    let selection = match Select::new()
         .with_prompt("What would you like to update?")
         .items(fields)
         .default(0)
         .interact()
-        .unwrap();
+    {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
 
     match selection {
         0 => {
-            let new_name: String = Input::new()
+            if let Ok(new_name) = Input::<String>::new()
                 .with_prompt("Enter new Name")
                 .interact_text()
-                .unwrap();
-            conn.execute(
-                "UPDATE Clients SET name = ? WHERE id = ?",
-                params![new_name, id],
-            )?;
-            println!("Client Name updated successfully.");
+            {
+                conn.execute(
+                    "UPDATE Clients SET name = ? WHERE id = ?",
+                    params![new_name, id],
+                )?;
+                println!("Client Name updated successfully.");
+            }
         }
         1 => {
-            let new_city: String = Input::new()
+            if let Ok(new_city) = Input::<String>::new()
                 .with_prompt("Enter new City")
                 .interact_text()
-                .unwrap();
-            conn.execute(
-                "UPDATE Clients SET city = ? WHERE id = ?",
-                params![new_city, id],
-            )?;
-            println!("Client City updated successfully.");
+            {
+                conn.execute(
+                    "UPDATE Clients SET city = ? WHERE id = ?",
+                    params![new_city, id],
+                )?;
+                println!("Client City updated successfully.");
+            }
         }
         2 => {
-            let new_status: String = Input::new()
+            if let Ok(new_status) = Input::<String>::new()
                 .with_prompt("Enter new Status (Active/Refused)")
                 .interact_text()
-                .unwrap();
-            conn.execute(
-                "UPDATE Clients SET status = ? WHERE id = ?",
-                params![new_status, id],
-            )?;
-            println!("Client Status updated successfully.");
+            {
+                conn.execute(
+                    "UPDATE Clients SET status = ? WHERE id = ?",
+                    params![new_status, id],
+                )?;
+                println!("Client Status updated successfully.");
+            }
         }
         _ => unreachable!(),
     }
@@ -248,7 +258,7 @@ fn delete_client(conn: &Connection) -> Result<()> {
     let id: i64 = Input::new()
         .with_prompt("Enter the ID of the client to DELETE (or 0 to cancel)")
         .interact_text()
-        .unwrap();
+        .unwrap_or_default();
 
     if id == 0 {
         println!("Action cancelled.");
@@ -259,7 +269,7 @@ fn delete_client(conn: &Connection) -> Result<()> {
         .with_prompt("Are you sure you want to delete this client and all their readings? This cannot be undone.")
         .default(false)
         .interact()
-        .unwrap();
+        .unwrap_or(false);
 
     if confirmed {
         conn.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
@@ -271,19 +281,22 @@ fn delete_client(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn launch_wizard() -> (String, String, String, String, String, u32) {
+fn launch_wizard() -> Option<(String, String, String, String, String, u32)> {
     println!("\n--- Run New Astrology Reading ---");
 
     let name: String = Input::new()
         .with_prompt("Enter Client Name")
         .interact_text()
-        .unwrap();
+        .ok()?;
 
     let date: String = loop {
-        let input: String = Input::new()
+        let input: String = match Input::new()
             .with_prompt("Enter Date of Birth (DD/MM/YYYY)")
             .interact_text()
-            .unwrap();
+        {
+            Ok(val) => val,
+            Err(_) => return None,
+        };
         if NaiveDate::parse_from_str(&input, "%d/%m/%Y").is_ok() {
             break input;
         }
@@ -294,10 +307,13 @@ fn launch_wizard() -> (String, String, String, String, String, u32) {
     };
 
     let time: String = loop {
-        let input: String = Input::new()
+        let input: String = match Input::new()
             .with_prompt("Enter Time of Birth (e.g., 10:45 AM or 14:30)")
             .interact_text()
-            .unwrap();
+        {
+            Ok(val) => val,
+            Err(_) => return None,
+        };
         if NaiveTime::parse_from_str(&input, "%I:%M %p").is_ok()
             || NaiveTime::parse_from_str(&input, "%H:%M").is_ok()
         {
@@ -315,19 +331,19 @@ fn launch_wizard() -> (String, String, String, String, String, u32) {
     let city: String = Input::new()
         .with_prompt("Enter City of Birth")
         .interact_text()
-        .unwrap();
+        .ok()?;
     let question: String = Input::new()
         .with_prompt("Enter the Querent's Question")
         .interact_text()
-        .unwrap();
+        .ok()?;
 
     let words_str: String = Input::new()
         .with_prompt("Enter desired reading length in words (e.g., 500)")
         .interact_text()
-        .unwrap();
+        .unwrap_or_else(|_| "500".to_string());
     let target_words: u32 = words_str.parse().unwrap_or(500);
 
-    (name, date, time, city, question, target_words)
+    Some((name, date, time, city, question, target_words))
 }
 
 pub struct ReadingParams {
@@ -341,10 +357,13 @@ pub struct ReadingParams {
 
 fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
     println!("\n--- Fast-Track Existing Client ---");
-    let search_name: String = Input::new()
+    let search_name: String = match Input::new()
         .with_prompt("Enter the Name of the client (or type 'cancel' to exit)")
         .interact_text()
-        .unwrap();
+    {
+        Ok(val) => val,
+        Err(_) => return Ok(None),
+    };
 
     if search_name.trim().eq_ignore_ascii_case("cancel") {
         println!("Action cancelled.");
@@ -384,10 +403,13 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
             );
         }
 
-        let selected_id_str: String = Input::new()
+        let selected_id_str: String = match Input::new()
             .with_prompt("Enter the specific ID of the correct match from this detailed list")
             .interact_text()
-            .unwrap();
+        {
+            Ok(val) => val,
+            Err(_) => return Ok(None),
+        };
 
         match selected_id_str.trim().parse::<i64>() {
             Ok(id) => id,
@@ -426,15 +448,18 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
                 .bold()
         );
 
-        let question: String = Input::new()
+        let question: String = match Input::new()
             .with_prompt("Enter the Querent's NEW Question")
             .interact_text()
-            .unwrap();
+        {
+            Ok(val) => val,
+            Err(_) => return Ok(None),
+        };
 
         let words_str: String = Input::new()
             .with_prompt("Enter desired reading length in words (e.g., 500)")
             .interact_text()
-            .unwrap();
+            .unwrap_or_else(|_| "500".to_string());
         let target_words: u32 = words_str.parse().unwrap_or(500);
 
         Ok(Some(ReadingParams {
@@ -451,6 +476,68 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
     }
 }
 
+fn build_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connection_verbose(false)
+        .tcp_keepalive(None)
+        .pool_idle_timeout(std::time::Duration::from_secs(5))
+        .pool_max_idle_per_host(1)
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .expect("Network Initialization Error")
+}
+
+fn parse_birth_datetime(date_str: &str, time_str: &str) -> Option<NaiveDateTime> {
+    let date = NaiveDate::parse_from_str(date_str, "%d/%m/%Y").ok()?;
+    let time = NaiveTime::parse_from_str(time_str, "%I:%M %p")
+        .or_else(|_| NaiveTime::parse_from_str(time_str, "%H:%M"))
+        .ok()?;
+    Some(NaiveDateTime::new(date, time))
+}
+
+async fn save_and_open_html_report(name: &str, final_reading: &str) {
+    tokio::fs::create_dir_all("readings")
+        .await
+        .unwrap_or_default();
+
+    let html_content = format!(
+        "<!DOCTYPE html>\n<html>\n<head>\n\
+        <meta charset=\"UTF-8\">\n<title>Vedic Reading - {}</title>\n\
+        <style>\n\
+        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.8; color: #333; padding: 20px; background-color: #fcfcfc; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}\n\
+        </style>\n</head>\n<body>\n\
+        <h1>Vedic Reading for {}</h1>\n\
+        <pre style=\"white-space: pre-wrap; font-family: inherit;\">{}</pre>\n\
+        </body>\n</html>",
+        name, name, final_reading
+    );
+
+    let clean_name = utils::sanitize_filename(name);
+    let date_suffix = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("{}_{}.html", clean_name, date_suffix);
+
+    if let Ok(mut absolute_path) = std::env::current_dir() {
+        absolute_path.push("readings");
+        absolute_path.push(&filename);
+
+        if let Ok(mut file) = tokio::fs::File::create(&absolute_path).await {
+            let _ = file.write_all(html_content.as_bytes()).await;
+            println!(
+                "Reading generated! Opening in browser at: {}",
+                absolute_path.display()
+            );
+            let _ = open::that(&absolute_path);
+            return;
+        }
+    }
+
+    // Fallback to terminal output if file save fails
+    println!(
+        "\n--- AI Vedic Reading for {} ---\n{}\n--- End of Reading ---",
+        name, final_reading
+    );
+}
+
 async fn execute_reading_flow(
     conn: &Connection,
     name: String,
@@ -460,33 +547,15 @@ async fn execute_reading_flow(
     question: String,
     target_words: u32,
 ) {
-    let client = reqwest::Client::builder()
-        .connection_verbose(false)
-        .tcp_keepalive(None)
-        .pool_idle_timeout(std::time::Duration::from_secs(5))
-        .pool_max_idle_per_host(1)
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .expect("Network Initialization Error");
+    let client = build_http_client();
 
-    // Prepare NaiveDateTime for location/offset resolution
-    let date = match NaiveDate::parse_from_str(&date_str, "%d/%m/%Y") {
-        Ok(d) => d,
-        Err(_) => {
-            eprintln!("Invalid Date Format. Please use DD/MM/YYYY");
+    let naive_dt = match parse_birth_datetime(&date_str, &time_str) {
+        Some(dt) => dt,
+        None => {
+            eprintln!("Invalid Date/Time Format. Please verify date (DD/MM/YYYY) and time.");
             return;
         }
     };
-    let time = match NaiveTime::parse_from_str(&time_str, "%I:%M %p")
-        .or_else(|_| NaiveTime::parse_from_str(&time_str, "%H:%M"))
-    {
-        Ok(t) => t,
-        Err(_) => {
-            eprintln!("Invalid Time Format. Please use HH:MM AM/PM or HH:MM");
-            return;
-        }
-    };
-    let naive_dt = NaiveDateTime::new(date, time);
 
     println!("\nInitializing Astrology Workflow...");
 
@@ -539,11 +608,10 @@ async fn execute_reading_flow(
         "Whole Sign (Required for Standard Vedic)",
     ];
 
-    // Added fully qualified dialoguer just in case, though Select is imported.
     let house_selection = Select::new()
         .with_prompt("Select House System")
         .items(house_options)
-        .default(1) // Default to Whole Sign
+        .default(1)
         .interact()
         .unwrap_or(1);
 
@@ -612,7 +680,6 @@ async fn execute_reading_flow(
 
     println!("Orchestrating AI Prompt for {}...", name);
     let current_date = chrono::Local::now().format("%d %B %Y").to_string();
-    // [PROPRIETARY ASTROLOGICAL MASTER PROMPT REDACTED FOR PUBLIC REPOSITORY]
     let system_prompt = format!(
         "[PROPRIETARY ASTROLOGICAL MASTER PROMPT REDACTED FOR PUBLIC REPOSITORY]\n\
     Today's date: {}. Target word count: {}.",
@@ -663,45 +730,8 @@ async fn execute_reading_flow(
         println!("Reading successfully archived.");
     }
 
-    // Presentation Layer
-    tokio::fs::create_dir_all("readings")
-        .await
-        .unwrap_or_default();
-
-    let html_content = format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n\
-        <meta charset=\"UTF-8\">\n<title>Vedic Reading - {}</title>\n\
-        <style>\n\
-        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.8; color: #333; padding: 20px; background-color: #fcfcfc; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}\n\
-        </style>\n</head>\n<body>\n\
-        <h1>Vedic Reading for {}</h1>\n\
-        <pre style=\"white-space: pre-wrap; font-family: inherit;\">{}</pre>\n\
-        </body>\n</html>",
-        name, name, final_reading
-    );
-
-    let clean_name = utils::sanitize_filename(&name);
-    let date_suffix = chrono::Local::now().format("%Y%m%d_%H%M%S");
-    let filename = format!("{}_{}.html", clean_name, date_suffix);
-
-    let mut absolute_path = std::env::current_dir().unwrap();
-    absolute_path.push("readings");
-    absolute_path.push(&filename);
-
-    if let Ok(mut file) = tokio::fs::File::create(&absolute_path).await {
-        let _ = file.write_all(html_content.as_bytes()).await;
-        println!(
-            "Reading generated! Opening in browser at: {}",
-            absolute_path.display()
-        );
-        let _ = open::that(&absolute_path);
-    } else {
-        // Fallback to terminal
-        println!(
-            "\n--- AI Vedic Reading for {} ---\n{}\n--- End of Reading ---",
-            name, final_reading
-        );
-    }
+    // Save and open HTML report
+    save_and_open_html_report(&name, &final_reading).await;
 }
 
 fn wait_for_enter() {
@@ -752,17 +782,22 @@ async fn main() {
             "🚪 Exit Program",
         ];
 
-        let selection = Select::new()
+        let selection = match Select::new()
             .with_prompt("Main Menu - Select an Action")
             .items(menu_options)
             .default(0)
             .interact()
-            .unwrap();
+        {
+            Ok(s) => s,
+            Err(_) => break,
+        };
 
         match selection {
             0 => {
-                let (name, date, time, city, question, target_words) = launch_wizard();
-                execute_reading_flow(&conn, name, date, time, city, question, target_words).await;
+                if let Some((name, date, time, city, question, target_words)) = launch_wizard() {
+                    execute_reading_flow(&conn, name, date, time, city, question, target_words)
+                        .await;
+                }
                 wait_for_enter();
             }
             1 => {
