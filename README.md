@@ -18,6 +18,7 @@ This project demonstrates a high-performance system designed to orchestrate comp
 - **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
 - **Zero-copy prompt pipelines** — Multi-stage prompt assembly with data anonymization layers before API submission.
+- **Robust testing & persistence** — In-memory SQLite integration tests, comprehensive API backoff priority verification, and clean row mapping abstractions (`ClientRecord::from_row`).
 
 ---
 
@@ -68,6 +69,9 @@ src/
 ```bash
 # Set your Gemini API key
 export GEMINI_API_KEY="your-key-here"
+
+# Run tests
+cargo test
 
 # Build and run
 cargo run --bin rust_llm_astrology_agent
