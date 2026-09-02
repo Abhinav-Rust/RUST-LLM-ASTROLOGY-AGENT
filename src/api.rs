@@ -133,13 +133,14 @@ async fn call_gemini_once(
     request_body: &GeminiRequest,
 ) -> Result<GeminiResponse, GeminiError> {
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        model, api_key
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+        model
     );
 
     let response = client
         .post(&url)
         .header("Content-Type", "application/json")
+        .header("x-goog-api-key", api_key)
         .json(request_body)
         .send()
         .await
