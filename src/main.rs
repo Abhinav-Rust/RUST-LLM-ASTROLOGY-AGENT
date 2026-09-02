@@ -97,6 +97,111 @@ fn manage_client(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_test_db() -> Result<Connection> {
+        let conn = Connection::open_in_memory()?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS Clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                city TEXT NOT NULL,
+                birth_data TEXT NOT NULL,
+                status TEXT NOT NULL,
+                dob TEXT,
+                time TEXT
+            )",
+            (),
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS Readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                question TEXT NOT NULL,
+                full_ai_response TEXT NOT NULL,
+                FOREIGN KEY(client_id) REFERENCES Clients(id)
+            )",
+            (),
+        )?;
+
+        Ok(conn)
+    }
+
+    #[test]
+    fn test_manage_client_new_and_repeat() -> Result<()> {
+        let conn = init_test_db()?;
+
+        // New client creation
+        let (id1, status1) = manage_client(
+            &conn,
+            "John Doe",
+            "London",
+            "15/08/1990",
+            "10:45 AM",
+            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 1.00",
+        )?;
+        assert_eq!(id1, 1);
+        assert_eq!(status1, "Active");
+
+        // Repeat client check
+        let (id2, status2) = manage_client(
+            &conn,
+            "John Doe",
+            "London",
+            "15/08/1990",
+            "10:45 AM",
+            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 1.00",
+        )?;
+        assert_eq!(id2, 1);
+        assert_eq!(status2, "Active");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_save_reading_and_query() -> Result<()> {
+        let conn = init_test_db()?;
+
+        let (client_id, _) = manage_client(
+            &conn,
+            "Jane Smith",
+            "Paris",
+            "01/01/1995",
+            "14:30",
+            "Date: 01/01/1995, Time: 14:30, UTC Offset: 1.00",
+        )?;
+
+        save_reading(
+            &conn,
+            client_id,
+            "What is my career outlook?",
+            "Promising alignment.",
+        )?;
+
+        let mut stmt = conn.prepare(
+            "SELECT client_id, question, full_ai_response FROM Readings WHERE client_id = ?",
+        )?;
+        let reading_row = stmt.query_row(params![client_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        assert_eq!(reading_row.0, client_id);
+        assert_eq!(reading_row.1, "What is my career outlook?");
+        assert_eq!(reading_row.2, "Promising alignment.");
+
+        Ok(())
+    }
+}
+
 fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &str) -> Result<()> {
     conn.execute(
         "INSERT INTO Readings (client_id, question, full_ai_response) VALUES (?, ?, ?)",
@@ -104,6 +209,7 @@ fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &st
     )?;
     Ok(())
 }
+#[derive(Debug, PartialEq, Eq)]
 pub struct ClientRecord {
     pub id: i64,
     pub name: String,
@@ -113,22 +219,26 @@ pub struct ClientRecord {
     pub time: Option<String>,
 }
 
+impl ClientRecord {
+    pub fn from_row(row: &rusqlite::Row<'_>) -> Result<Self> {
+        Ok(ClientRecord {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            city: row.get(2)?,
+            status: row.get(3)?,
+            dob: row.get(4)?,
+            time: row.get(5)?,
+        })
+    }
+}
+
 fn view_clients(conn: &Connection, results: Option<Vec<ClientRecord>>) -> Result<()> {
     let list = match results {
         Some(r) => r,
         None => {
             let mut stmt = conn.prepare("SELECT id, name, city, status, dob, time FROM Clients")?;
-            stmt.query_map([], |row| {
-                Ok(ClientRecord {
-                    id: row.get::<_, i64>(0)?,
-                    name: row.get::<_, String>(1)?,
-                    city: row.get::<_, String>(2)?,
-                    status: row.get::<_, String>(3)?,
-                    dob: row.get::<_, Option<String>>(4)?,
-                    time: row.get::<_, Option<String>>(5)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?
+            stmt.query_map([], ClientRecord::from_row)?
+                .collect::<Result<Vec<_>, _>>()?
         }
     };
 
@@ -165,16 +275,7 @@ fn search_clients(conn: &Connection) -> Result<()> {
         conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE name LIKE ?")?;
     let query_term = format!("%{}%", search_term);
     let results = stmt
-        .query_map(params![query_term], |row| {
-            Ok(ClientRecord {
-                id: row.get::<_, i64>(0)?,
-                name: row.get::<_, String>(1)?,
-                city: row.get::<_, String>(2)?,
-                status: row.get::<_, String>(3)?,
-                dob: row.get::<_, Option<String>>(4)?,
-                time: row.get::<_, Option<String>>(5)?,
-            })
-        })?
+        .query_map(params![query_term], ClientRecord::from_row)?
         .collect::<Result<Vec<_>, _>>()?;
 
     if results.is_empty() {
@@ -355,16 +456,7 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
         conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE name LIKE ?")?;
     let query_term = format!("%{}%", search_name);
     let results: Vec<ClientRecord> = stmt
-        .query_map(params![query_term], |row| {
-            Ok(ClientRecord {
-                id: row.get::<_, i64>(0)?,
-                name: row.get::<_, String>(1)?,
-                city: row.get::<_, String>(2)?,
-                status: row.get::<_, String>(3)?,
-                dob: row.get::<_, Option<String>>(4)?,
-                time: row.get::<_, Option<String>>(5)?,
-            })
-        })?
+        .query_map(params![query_term], ClientRecord::from_row)?
         .collect::<Result<Vec<_>, _>>()?;
 
     if results.is_empty() {

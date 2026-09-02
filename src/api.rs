@@ -395,4 +395,40 @@ mod tests {
         assert_eq!(fallback_date("2025-05-10"), "2026-05-10");
         assert_eq!(fallback_date("invalid-date"), "2030-01-01");
     }
+
+    #[test]
+    fn test_backoff_duration_priority() {
+        // Priority 1: Error message body hint
+        let dur_msg = backoff_duration(1, Some(60), Some("Please retry in 10s"));
+        assert_eq!(dur_msg, Duration::from_secs(12));
+
+        // Priority 2: Retry-After HTTP header hint
+        let dur_header = backoff_duration(1, Some(15), None);
+        assert_eq!(dur_header, Duration::from_secs(17));
+
+        // Priority 3: Default exponential backoff with jitter
+        let dur_default = backoff_duration(0, None, None);
+        assert!(dur_default <= Duration::from_millis(BACKOFF_BASE_MS));
+    }
+
+    #[test]
+    fn test_gemini_error_display() {
+        let err_rate_limit = GeminiError::RateLimited {
+            retry_after_secs: Some(10),
+            message: Some("Quota exceeded".to_string()),
+        };
+        assert_eq!(
+            format!("{}", err_rate_limit),
+            "Rate limited (retry_after=Some(10)s, message=Some(\"Quota exceeded\"))"
+        );
+
+        let err_server = GeminiError::ServerError("Internal Server Error".to_string());
+        assert_eq!(
+            format!("{}", err_server),
+            "Server error: Internal Server Error"
+        );
+
+        let err_parse = GeminiError::ParseError("Invalid JSON".to_string());
+        assert_eq!(format!("{}", err_parse), "Parse error: Invalid JSON");
+    }
 }
