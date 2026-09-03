@@ -17,17 +17,27 @@ pub async fn get_location_data(
     city: &str,
     naive_dt: NaiveDateTime,
 ) -> Result<(f64, f64, f64), String> {
-    let client = Client::builder()
+    let default_client = Client::builder()
         .user_agent("AstroAgent/1.0")
         .build()
         .map_err(|e| format!("Client Error: {}", e))?;
+    get_location_data_with_client(&default_client, city, naive_dt).await
+}
 
-    let url = format!(
-        "https://nominatim.openstreetmap.org/search?q={}&format=json&limit=1",
-        city
-    );
+pub async fn get_location_data_with_client(
+    client: &Client,
+    city: &str,
+    naive_dt: NaiveDateTime,
+) -> Result<(f64, f64, f64), String> {
+    let url = reqwest::Url::parse_with_params(
+        "https://nominatim.openstreetmap.org/search",
+        &[("q", city), ("format", "json"), ("limit", "1")],
+    )
+    .map_err(|e| format!("Invalid URL construction: {}", e))?;
+
     let response = client
         .get(url)
+        .header("User-Agent", "AstroAgent/1.0")
         .send()
         .await
         .map_err(|e| format!("Failed to reach Nominatim: {}", e))?;
@@ -74,4 +84,34 @@ pub async fn get_location_data(
     println!("Historical UTC Offset: {:.2} hours", offset_hours);
 
     Ok((lat, lon, offset_hours))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_finder_timezone_resolution() {
+        // Test offline timezone lookup via tzf-rs (London: lat ~51.5, lon ~-0.12)
+        let tz_name = FINDER.get_tz_name(-0.1276, 51.5074);
+        assert_eq!(tz_name, "Europe/London");
+
+        // Tokyo: lat ~35.67, lon ~139.65
+        let tz_tokyo = FINDER.get_tz_name(139.6503, 35.6762);
+        assert_eq!(tz_tokyo, "Asia/Tokyo");
+    }
+
+    #[test]
+    fn test_nominatim_url_construction() {
+        let city = "New York";
+        let url = reqwest::Url::parse_with_params(
+            "https://nominatim.openstreetmap.org/search",
+            &[("q", city), ("format", "json"), ("limit", "1")],
+        )
+        .unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://nominatim.openstreetmap.org/search?q=New+York&format=json&limit=1"
+        );
+    }
 }

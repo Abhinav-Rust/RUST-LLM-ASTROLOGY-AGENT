@@ -66,8 +66,8 @@ fn manage_client(
     match client_opt {
         Some((id, status)) => {
             let _ = conn.execute(
-                "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
-                params![dob, time, id],
+                "UPDATE Clients SET city = ?, birth_data = ?, dob = ?, time = ? WHERE id = ?",
+                params![city, birth_data, dob, time, id],
             );
             println!(
                 "{}",
@@ -200,6 +200,41 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_escape_html() {
+        assert_eq!(
+            escape_html("Alice <Bob> & 'Charlie' \"David\""),
+            "Alice &lt;Bob&gt; &amp; &#39;Charlie&#39; &quot;David&quot;"
+        );
+        assert_eq!(escape_html("No special chars"), "No special chars");
+    }
+
+    #[test]
+    fn test_client_record_query() -> Result<()> {
+        let conn = init_test_db()?;
+        let (id, _) = manage_client(
+            &conn,
+            "Test Person",
+            "Chicago",
+            "10/10/1988",
+            "12:00 PM",
+            "Summary",
+        )?;
+
+        let mut stmt =
+            conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE id = ?")?;
+        let record = stmt.query_row(params![id], ClientRecord::from_row)?;
+
+        assert_eq!(record.id, id);
+        assert_eq!(record.name, "Test Person");
+        assert_eq!(record.city, "Chicago");
+        assert_eq!(record.status, "Active");
+        assert_eq!(record.dob, Some("10/10/1988".to_string()));
+        assert_eq!(record.time, Some("12:00 PM".to_string()));
+
+        Ok(())
+    }
 }
 
 fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &str) -> Result<()> {
@@ -209,6 +244,16 @@ fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &st
     )?;
     Ok(())
 }
+
+pub fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClientRecord {
     pub id: i64,
@@ -583,13 +628,14 @@ async fn execute_reading_flow(
     println!("\nInitializing Astrology Workflow...");
 
     println!("Resolving Location and Historical Timezone for {}...", city);
-    let (lat, lon, offset) = match geo::get_location_data(&city, naive_dt).await {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("Location Resolution Error: {}", e);
-            return;
-        }
-    };
+    let (lat, lon, offset) =
+        match geo::get_location_data_with_client(&client, &city, naive_dt).await {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("Location Resolution Error: {}", e);
+                return;
+            }
+        };
 
     let birth_data_summary = format!(
         "Date: {}, Time: {}, UTC Offset: {:.2}",
@@ -760,6 +806,9 @@ async fn execute_reading_flow(
         .await
         .unwrap_or_default();
 
+    let safe_name = escape_html(&name);
+    let safe_reading = escape_html(&final_reading);
+
     let html_content = format!(
         "<!DOCTYPE html>\n<html>\n<head>\n\
         <meta charset=\"UTF-8\">\n<title>Vedic Reading - {}</title>\n\
@@ -769,7 +818,7 @@ async fn execute_reading_flow(
         <h1>Vedic Reading for {}</h1>\n\
         <pre style=\"white-space: pre-wrap; font-family: inherit;\">{}</pre>\n\
         </body>\n</html>",
-        name, name, final_reading
+        safe_name, safe_name, safe_reading
     );
 
     let clean_name = utils::sanitize_filename(&name);

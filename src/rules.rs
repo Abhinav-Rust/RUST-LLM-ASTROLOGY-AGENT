@@ -1,8 +1,10 @@
-// IP REDACTED: Deterministic planetary calculations handled here.
-// This module originally contained the full Vedic astrology rules engine:
-// planetary dignity (exaltation/debilitation), combustion detection,
-// retrogression analysis, Neecha Bhanga Raj Yoga evaluation,
-// house lordship mapping, conjunction detection, and aspect calculation.
+//! Vedic Rules Engine Module (Structural Stub).
+//!
+//! In production, this module computes planetary dignity (exaltation/debilitation),
+//! combustion, retrogression, Neecha Bhanga Raj Yogas, house lordships, conjunctions,
+//! and aspects based on astronomical chart data.
+//!
+//! Note: Proprietary rules engine logic is redacted for public showcase.
 
 use crate::math::AstroData;
 
@@ -55,4 +57,27 @@ pub fn process(_astro_data: &AstroData) -> ExpertData {
 pub fn format_summary(_data: &ExpertData) -> String {
     // IP REDACTED: Deterministic planetary calculations handled here.
     "[CHART SUMMARY REDACTED — Proprietary rules engine]".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math::{AstroData, System};
+
+    #[test]
+    fn test_rules_process_stub() {
+        let astro_data = AstroData {
+            system: System::Vedic,
+            planets: Vec::new(),
+            house_cusps: Vec::new(),
+            ascendant: 0.0,
+        };
+
+        let expert_data = process(&astro_data);
+        assert!(expert_data.planets.is_empty());
+        assert!(expert_data.house_lordships.is_empty());
+
+        let summary = format_summary(&expert_data);
+        assert!(summary.contains("REDACTED"));
+    }
 }

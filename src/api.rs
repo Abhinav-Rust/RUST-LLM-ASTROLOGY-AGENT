@@ -346,15 +346,35 @@ pub async fn extract_target_date(client: &Client, question: &str, current_date: 
     )
     .await
     {
-        Ok(text) => {
-            let text = text.trim();
-            if text.len() >= 10 && text.contains("-") {
-                return text[..10].to_string();
-            }
-            fallback_date(current_date)
-        }
+        Ok(text) => parse_date_response(&text, current_date),
         Err(_) => fallback_date(current_date),
     }
+}
+
+fn parse_date_response(text: &str, current_date: &str) -> String {
+    let trimmed = text.trim();
+
+    // 1. Scan tokens for valid YYYY-MM-DD
+    for word in trimmed.split_whitespace() {
+        let clean = word.trim_matches(|c: char| !c.is_ascii_digit() && c != '-');
+        if clean.chars().count() >= 10 {
+            let candidate: String = clean.chars().take(10).collect();
+            if NaiveDate::parse_from_str(&candidate, "%Y-%m-%d").is_ok() {
+                return candidate;
+            }
+        }
+    }
+
+    // 2. Try prefix slice safely adhering to UTF-8 character boundaries
+    let char_len = trimmed.chars().count();
+    if char_len >= 10 {
+        let candidate: String = trimmed.chars().take(10).collect();
+        if NaiveDate::parse_from_str(&candidate, "%Y-%m-%d").is_ok() {
+            return candidate;
+        }
+    }
+
+    fallback_date(current_date)
 }
 
 fn fallback_date(current_date: &str) -> String {
@@ -395,6 +415,35 @@ mod tests {
     fn test_fallback_date() {
         assert_eq!(fallback_date("2025-05-10"), "2026-05-10");
         assert_eq!(fallback_date("invalid-date"), "2030-01-01");
+    }
+
+    #[test]
+    fn test_parse_date_response() {
+        let current = "2025-01-01";
+
+        // Plain YYYY-MM-DD
+        assert_eq!(parse_date_response("2026-08-15", current), "2026-08-15");
+
+        // Extra whitespace or quotes
+        assert_eq!(
+            parse_date_response("  2027-11-20\n ", current),
+            "2027-11-20"
+        );
+
+        // Multi-byte Unicode prefix (emoji)
+        assert_eq!(
+            parse_date_response("🎯 Target date: 2028-03-14.", current),
+            "2028-03-14"
+        );
+
+        // Markdown formatted
+        assert_eq!(
+            parse_date_response("The target date is **2029-12-31**.", current),
+            "2029-12-31"
+        );
+
+        // Fallback when no valid YYYY-MM-DD is present
+        assert_eq!(parse_date_response("No date here!", current), "2026-01-01");
     }
 
     #[test]
