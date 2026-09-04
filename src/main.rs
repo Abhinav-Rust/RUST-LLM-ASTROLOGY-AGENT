@@ -66,8 +66,8 @@ fn manage_client(
     match client_opt {
         Some((id, status)) => {
             let _ = conn.execute(
-                "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
-                params![dob, time, id],
+                "UPDATE Clients SET city = ?, birth_data = ?, dob = ?, time = ? WHERE id = ?",
+                params![city, birth_data, dob, time, id],
             );
             println!(
                 "{}",
@@ -148,17 +148,47 @@ mod tests {
         assert_eq!(id1, 1);
         assert_eq!(status1, "Active");
 
-        // Repeat client check
+        // Repeat client check - updating city and birth_data
         let (id2, status2) = manage_client(
             &conn,
             "John Doe",
-            "London",
+            "Manchester",
             "15/08/1990",
-            "10:45 AM",
-            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 1.00",
+            "11:00 AM",
+            "Date: 15/08/1990, Time: 11:00 AM, UTC Offset: 0.00",
         )?;
         assert_eq!(id2, 1);
         assert_eq!(status2, "Active");
+
+        // Verify updated record
+        let mut stmt = conn.prepare("SELECT city, time FROM Clients WHERE id = ?")?;
+        let (city, time) = stmt.query_row(params![id2], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        assert_eq!(city, "Manchester");
+        assert_eq!(time, "11:00 AM");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_client_record_from_row() -> Result<()> {
+        let conn = init_test_db()?;
+        conn.execute(
+            "INSERT INTO Clients (name, city, birth_data, status, dob, time) VALUES (?, ?, ?, ?, ?, ?)",
+            params!["Alice", "Paris", "data", "Active", "01/01/2000", "12:00"],
+        )?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, name, city, status, dob, time FROM Clients WHERE name = 'Alice'",
+        )?;
+        let client = stmt.query_row([], ClientRecord::from_row)?;
+
+        assert_eq!(client.name, "Alice");
+        assert_eq!(client.city, "Paris");
+        assert_eq!(client.status, "Active");
+        assert_eq!(client.dob, Some("01/01/2000".to_string()));
+        assert_eq!(client.time, Some("12:00".to_string()));
 
         Ok(())
     }
@@ -306,7 +336,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
         .interact()
         .unwrap();
 
-    match selection {
+    let rows_updated = match selection {
         0 => {
             let new_name: String = Input::new()
                 .with_prompt("Enter new Name")
@@ -315,8 +345,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
             conn.execute(
                 "UPDATE Clients SET name = ? WHERE id = ?",
                 params![new_name, id],
-            )?;
-            println!("Client Name updated successfully.");
+            )?
         }
         1 => {
             let new_city: String = Input::new()
@@ -326,8 +355,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
             conn.execute(
                 "UPDATE Clients SET city = ? WHERE id = ?",
                 params![new_city, id],
-            )?;
-            println!("Client City updated successfully.");
+            )?
         }
         2 => {
             let new_status: String = Input::new()
@@ -337,10 +365,18 @@ fn edit_client(conn: &Connection) -> Result<()> {
             conn.execute(
                 "UPDATE Clients SET status = ? WHERE id = ?",
                 params![new_status, id],
-            )?;
-            println!("Client Status updated successfully.");
+            )?
         }
         _ => unreachable!(),
+    };
+
+    if rows_updated == 0 {
+        println!(
+            "{}",
+            style("Client ID not found. No updates made.").yellow()
+        );
+    } else {
+        println!("Client updated successfully.");
     }
     Ok(())
 }
@@ -363,9 +399,20 @@ fn delete_client(conn: &Connection) -> Result<()> {
         .unwrap();
 
     if confirmed {
-        conn.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
-        conn.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
-        println!("Client and associated records deleted permanently.");
+        let readings_deleted =
+            conn.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
+        let clients_deleted = conn.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+        if clients_deleted == 0 {
+            println!(
+                "{}",
+                style("Client ID not found. Nothing deleted.").yellow()
+            );
+        } else {
+            println!(
+                "Client deleted successfully ({} associated reading(s) deleted).",
+                readings_deleted
+            );
+        }
     } else {
         println!("Deletion cancelled.");
     }
@@ -583,13 +630,17 @@ async fn execute_reading_flow(
     println!("\nInitializing Astrology Workflow...");
 
     println!("Resolving Location and Historical Timezone for {}...", city);
-    let (lat, lon, offset) = match geo::get_location_data(&city, naive_dt).await {
+    let loc_data = match geo::get_location_data(&city, naive_dt).await {
         Ok(data) => data,
         Err(e) => {
             eprintln!("Location Resolution Error: {}", e);
             return;
         }
     };
+
+    let lat = loc_data.latitude;
+    let lon = loc_data.longitude;
+    let offset = loc_data.utc_offset_hours;
 
     let birth_data_summary = format!(
         "Date: {}, Time: {}, UTC Offset: {:.2}",

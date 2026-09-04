@@ -15,10 +15,11 @@
 This project demonstrates a high-performance system designed to orchestrate complex, multi-step AI workflows against rate-limited APIs. While the system was originally deployed for production Vedic astrology readings, the core patterns and architecture generalize to any complex multi-agent domain requiring:
 
 - **Multi-agent orchestration** — Agent 1 extracts structured parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data.
-- **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
+- **Resilient API communication** — Custom 3-tier exponential backoff with dynamic rate-limit parsing directly from error message bodies (`"retry in"`, `"retry after"`, `"try again in"`), `Retry-After` header respect, transient HTTP 5xx retry handling, and configurable retry ceilings.
+- **Type-safe Geocoding & Query Encoding** — Structured `LocationData` model paired with URL query-string parameter encoding for safe handling of international location queries.
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
 - **Zero-copy prompt pipelines** — Multi-stage prompt assembly with data anonymization layers before API submission.
-- **Robust testing & persistence** — In-memory SQLite integration tests, comprehensive API backoff priority verification, and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Robust testing & persistence** — In-memory SQLite integration tests, client updates & row-affected validations, comprehensive API backoff verification, and unit test coverage across all codebase modules.
 
 ---
 
@@ -52,12 +53,13 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 ```
 src/
 ├── lib.rs        # Shared library for all modules
-├── main.rs       # CLI/TUI, orchestration, DB layer, presentation
-├── api.rs        # Gemini API client, retry logic, backoff engine
+├── main.rs       # CLI/TUI, orchestration, SQLite DB persistence & client management
+├── api.rs        # Gemini API client with 3-tier backoff & 5xx server error retry
 ├── math.rs       # [STUBBED] Planetary position calculations
 ├── rules.rs      # [STUBBED] Vedic astrology rules engine
 ├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator
-├── geo.rs        # Geocoding + historical timezone resolution
+├── geo.rs        # Geocoding (`LocationData`), query encoding & historical timezone resolution
+├── utils.rs      # Filename sanitization and string utilities
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```

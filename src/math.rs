@@ -3,7 +3,7 @@
 // planetary longitude computation, house cusp calculation, and Parivartan Yoga detection.
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum System {
     Vedic,
     KP,
@@ -74,4 +74,53 @@ pub fn detect_parivartan_yogas(_planets: &[PlanetData]) -> String {
     // IP REDACTED: Deterministic planetary calculations handled here.
     // Original implementation detected mutual sign exchanges (Parivartan Yogas) between planets.
     String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_astrology_stub() {
+        let details = BirthDetails {
+            date: "15/08/1990".to_string(),
+            time: "10:45 AM".to_string(),
+            latitude: 51.5074,
+            longitude: -0.1278,
+            timezone: 1.0,
+            system: System::Vedic,
+            house_system: HouseSystem::WholeSign,
+        };
+
+        let result = calculate_astrology(details);
+        assert!(result.is_ok());
+
+        let astro_data = result.unwrap();
+        assert_eq!(astro_data.system, System::Vedic);
+        assert_eq!(astro_data.planets.len(), 9);
+        assert_eq!(astro_data.house_cusps.len(), 12);
+        assert_eq!(astro_data.ascendant, 0.0);
+
+        let planet_names: Vec<&str> = astro_data.planets.iter().map(|p| p.name.as_str()).collect();
+        assert!(planet_names.contains(&"Sun"));
+        assert!(planet_names.contains(&"Moon"));
+    }
+
+    #[test]
+    fn test_detect_parivartan_yogas_stub() {
+        let planets = vec![
+            PlanetData {
+                name: "Sun".to_string(),
+                longitude: 10.0,
+                speed: 1.0,
+            },
+            PlanetData {
+                name: "Moon".to_string(),
+                longitude: 120.0,
+                speed: 12.0,
+            },
+        ];
+        let result = detect_parivartan_yogas(&planets);
+        assert_eq!(result, "");
+    }
 }

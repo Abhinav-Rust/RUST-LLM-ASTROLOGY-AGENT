@@ -7,6 +7,13 @@ use tzf_rs::DefaultFinder;
 
 static FINDER: Lazy<DefaultFinder> = Lazy::new(DefaultFinder::new);
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocationData {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub utc_offset_hours: f64,
+}
+
 #[derive(Deserialize)]
 struct NominatimResult {
     lat: String,
@@ -16,18 +23,15 @@ struct NominatimResult {
 pub async fn get_location_data(
     city: &str,
     naive_dt: NaiveDateTime,
-) -> Result<(f64, f64, f64), String> {
+) -> Result<LocationData, String> {
     let client = Client::builder()
         .user_agent("AstroAgent/1.0")
         .build()
         .map_err(|e| format!("Client Error: {}", e))?;
 
-    let url = format!(
-        "https://nominatim.openstreetmap.org/search?q={}&format=json&limit=1",
-        city
-    );
     let response = client
-        .get(url)
+        .get("https://nominatim.openstreetmap.org/search")
+        .query(&[("q", city), ("format", "json"), ("limit", "1")])
         .send()
         .await
         .map_err(|e| format!("Failed to reach Nominatim: {}", e))?;
@@ -73,5 +77,26 @@ pub async fn get_location_data(
 
     println!("Historical UTC Offset: {:.2} hours", offset_hours);
 
-    Ok((lat, lon, offset_hours))
+    Ok(LocationData {
+        latitude: lat,
+        longitude: lon,
+        utc_offset_hours: offset_hours,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_location_data_struct() {
+        let loc = LocationData {
+            latitude: 51.5074,
+            longitude: -0.1278,
+            utc_offset_hours: 1.0,
+        };
+        assert_eq!(loc.latitude, 51.5074);
+        assert_eq!(loc.longitude, -0.1278);
+        assert_eq!(loc.utc_offset_hours, 1.0);
+    }
 }

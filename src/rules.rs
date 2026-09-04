@@ -56,3 +56,29 @@ pub fn format_summary(_data: &ExpertData) -> String {
     // IP REDACTED: Deterministic planetary calculations handled here.
     "[CHART SUMMARY REDACTED — Proprietary rules engine]".to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math::{AstroData, System};
+
+    #[test]
+    fn test_process_and_format_summary_stub() {
+        let astro_data = AstroData {
+            system: System::Vedic,
+            planets: vec![],
+            house_cusps: vec![],
+            ascendant: 0.0,
+        };
+
+        let expert_data = process(&astro_data);
+        assert!(expert_data.planets.is_empty());
+        assert!(expert_data.house_lordships.is_empty());
+
+        let summary = format_summary(&expert_data);
+        assert_eq!(
+            summary,
+            "[CHART SUMMARY REDACTED — Proprietary rules engine]"
+        );
+    }
+}
