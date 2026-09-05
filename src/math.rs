@@ -75,3 +75,45 @@ pub fn detect_parivartan_yogas(_planets: &[PlanetData]) -> String {
     // Original implementation detected mutual sign exchanges (Parivartan Yogas) between planets.
     String::new()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_astrology() {
+        let details = BirthDetails {
+            date: "15/08/1990".to_string(),
+            time: "10:45 AM".to_string(),
+            latitude: 51.5074,
+            longitude: -0.1278,
+            timezone: 1.0,
+            system: System::Vedic,
+            house_system: HouseSystem::WholeSign,
+        };
+
+        let result = calculate_astrology(details).expect("Astrology calculation failed");
+        assert_eq!(result.planets.len(), 9);
+        assert_eq!(result.house_cusps.len(), 12);
+        assert_eq!(result.planets[0].name, "Sun");
+        assert_eq!(result.planets[1].name, "Moon");
+    }
+
+    #[test]
+    fn test_detect_parivartan_yogas() {
+        let planets = vec![
+            PlanetData {
+                name: "Sun".to_string(),
+                longitude: 10.0,
+                speed: 1.0,
+            },
+            PlanetData {
+                name: "Mars".to_string(),
+                longitude: 120.0,
+                speed: 0.5,
+            },
+        ];
+        let res = detect_parivartan_yogas(&planets);
+        assert!(res.is_empty());
+    }
+}

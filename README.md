@@ -18,7 +18,9 @@ This project demonstrates a high-performance system designed to orchestrate comp
 - **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
 - **Zero-copy prompt pipelines** — Multi-stage prompt assembly with data anonymization layers before API submission.
-- **Robust testing & persistence** — In-memory SQLite integration tests, comprehensive API backoff priority verification, and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Robust testing & persistence** — Full unit test coverage across all engine modules, in-memory SQLite integration tests, atomic database transactions (`conn.transaction()`), and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Complete CRUD client lifecycle** — Full client management including creating, searching, editing (Name, City, Status, DOB, Time), and atomic deletion.
+- **Resilient geocoding & input parsing** — Connection-pooled Nominatim geocoding with safe URL query parameter encoding, plus flexible multi-format time parsing (`parse_time_string`).
 
 ---
 
@@ -51,13 +53,14 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 
 ```
 src/
-├── lib.rs        # Shared library for all modules
-├── main.rs       # CLI/TUI, orchestration, DB layer, presentation
-├── api.rs        # Gemini API client, retry logic, backoff engine
-├── math.rs       # [STUBBED] Planetary position calculations
-├── rules.rs      # [STUBBED] Vedic astrology rules engine
-├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator
-├── geo.rs        # Geocoding + historical timezone resolution
+├── lib.rs        # Shared library module exports
+├── main.rs       # Interactive CLI/TUI, client CRUD, SQLite transactions, orchestration
+├── api.rs        # Gemini API client, 3-tier rate-limit backoff engine
+├── math.rs       # [STUBBED] Planetary position calculation interface
+├── rules.rs      # [STUBBED] Vedic astrology rules engine interface
+├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator interface
+├── geo.rs        # Geocoding + offline tzf-rs historical timezone resolution
+├── utils.rs      # Filename sanitization and string cleaning utilities
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```
@@ -70,10 +73,10 @@ src/
 # Set your Gemini API key
 export GEMINI_API_KEY="your-key-here"
 
-# Run tests
-cargo test
+# Run full suite (check, lints, tests, format)
+cargo check && cargo clippy --all-targets && cargo test && cargo fmt --check
 
-# Build and run
+# Build and run interactive TUI
 cargo run --bin rust_llm_astrology_agent
 ```
 

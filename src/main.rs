@@ -200,6 +200,74 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_parse_time_string() {
+        assert_eq!(
+            parse_time_string("10:45 AM"),
+            Some(NaiveTime::from_hms_opt(10, 45, 0).unwrap())
+        );
+        assert_eq!(
+            parse_time_string("10:45 am"),
+            Some(NaiveTime::from_hms_opt(10, 45, 0).unwrap())
+        );
+        assert_eq!(
+            parse_time_string("10:45PM"),
+            Some(NaiveTime::from_hms_opt(22, 45, 0).unwrap())
+        );
+        assert_eq!(
+            parse_time_string("14:30"),
+            Some(NaiveTime::from_hms_opt(14, 30, 0).unwrap())
+        );
+        assert_eq!(
+            parse_time_string("9:15 AM"),
+            Some(NaiveTime::from_hms_opt(9, 15, 0).unwrap())
+        );
+        assert_eq!(parse_time_string("invalid time"), None);
+    }
+
+    #[test]
+    fn test_atomic_delete_client_transaction() -> Result<()> {
+        let conn = init_test_db()?;
+
+        let (client_id, _) = manage_client(
+            &conn,
+            "Alice Smith",
+            "New York",
+            "10/10/1988",
+            "09:00 AM",
+            "Date: 10/10/1988, Time: 09:00 AM, UTC Offset: -5.00",
+        )?;
+
+        save_reading(&conn, client_id, "Will I move?", "Yes.")?;
+
+        // Perform transaction deletion
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM Readings WHERE client_id = ?",
+            params![client_id],
+        )?;
+        tx.execute("DELETE FROM Clients WHERE id = ?", params![client_id])?;
+        tx.commit()?;
+
+        // Verify client deletion
+        let client_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Clients WHERE id = ?",
+            params![client_id],
+            |r| r.get(0),
+        )?;
+        assert_eq!(client_count, 0);
+
+        // Verify readings deletion
+        let reading_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Readings WHERE client_id = ?",
+            params![client_id],
+            |r| r.get(0),
+        )?;
+        assert_eq!(reading_count, 0);
+
+        Ok(())
+    }
 }
 
 fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &str) -> Result<()> {
@@ -287,6 +355,33 @@ fn search_clients(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+pub fn parse_time_string(input: &str) -> Option<NaiveTime> {
+    let trimmed = input.trim();
+    if let Ok(t) = NaiveTime::parse_from_str(trimmed, "%I:%M %p") {
+        return Some(t);
+    }
+    if let Ok(t) = NaiveTime::parse_from_str(trimmed, "%H:%M") {
+        return Some(t);
+    }
+    let upper = trimmed.to_uppercase();
+    if let Ok(t) = NaiveTime::parse_from_str(&upper, "%I:%M %p") {
+        return Some(t);
+    }
+    if let Ok(t) = NaiveTime::parse_from_str(&upper, "%I:%M%p") {
+        return Some(t);
+    }
+    if let Ok(t) = NaiveTime::parse_from_str(&upper, "%l:%M %p") {
+        return Some(t);
+    }
+    if let Ok(t) = NaiveTime::parse_from_str(&upper, "%l:%M%p") {
+        return Some(t);
+    }
+    if let Ok(t) = NaiveTime::parse_from_str(trimmed, "%k:%M") {
+        return Some(t);
+    }
+    None
+}
+
 fn edit_client(conn: &Connection) -> Result<()> {
     let id: i64 = Input::new()
         .with_prompt("Enter the ID of the client (or type 0 to cancel)")
@@ -298,7 +393,13 @@ fn edit_client(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    let fields = &["Name", "City", "Status (Active/Refused)"];
+    let fields = &[
+        "Name",
+        "City",
+        "Status (Active/Refused)",
+        "Date of Birth (DOB)",
+        "Time of Birth",
+    ];
     let selection = Select::new()
         .with_prompt("What would you like to update?")
         .items(fields)
@@ -340,6 +441,28 @@ fn edit_client(conn: &Connection) -> Result<()> {
             )?;
             println!("Client Status updated successfully.");
         }
+        3 => {
+            let new_dob: String = Input::new()
+                .with_prompt("Enter new DOB (DD/MM/YYYY)")
+                .interact_text()
+                .unwrap();
+            conn.execute(
+                "UPDATE Clients SET dob = ? WHERE id = ?",
+                params![new_dob, id],
+            )?;
+            println!("Client DOB updated successfully.");
+        }
+        4 => {
+            let new_time: String = Input::new()
+                .with_prompt("Enter new Time of Birth")
+                .interact_text()
+                .unwrap();
+            conn.execute(
+                "UPDATE Clients SET time = ? WHERE id = ?",
+                params![new_time, id],
+            )?;
+            println!("Client Time updated successfully.");
+        }
         _ => unreachable!(),
     }
     Ok(())
@@ -363,8 +486,10 @@ fn delete_client(conn: &Connection) -> Result<()> {
         .unwrap();
 
     if confirmed {
-        conn.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
-        conn.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
+        tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+        tx.commit()?;
         println!("Client and associated records deleted permanently.");
     } else {
         println!("Deletion cancelled.");
@@ -399,9 +524,7 @@ fn launch_wizard() -> (String, String, String, String, String, u32) {
             .with_prompt("Enter Time of Birth (e.g., 10:45 AM or 14:30)")
             .interact_text()
             .unwrap();
-        if NaiveTime::parse_from_str(&input, "%I:%M %p").is_ok()
-            || NaiveTime::parse_from_str(&input, "%H:%M").is_ok()
-        {
+        if parse_time_string(&input).is_some() {
             break input;
         }
         println!(
@@ -569,11 +692,9 @@ async fn execute_reading_flow(
             return;
         }
     };
-    let time = match NaiveTime::parse_from_str(&time_str, "%I:%M %p")
-        .or_else(|_| NaiveTime::parse_from_str(&time_str, "%H:%M"))
-    {
-        Ok(t) => t,
-        Err(_) => {
+    let time = match parse_time_string(&time_str) {
+        Some(t) => t,
+        None => {
             eprintln!("Invalid Time Format. Please use HH:MM AM/PM or HH:MM");
             return;
         }
@@ -583,7 +704,7 @@ async fn execute_reading_flow(
     println!("\nInitializing Astrology Workflow...");
 
     println!("Resolving Location and Historical Timezone for {}...", city);
-    let (lat, lon, offset) = match geo::get_location_data(&city, naive_dt).await {
+    let (lat, lon, offset) = match geo::get_location_data(&client, &city, naive_dt).await {
         Ok(data) => data,
         Err(e) => {
             eprintln!("Location Resolution Error: {}", e);
