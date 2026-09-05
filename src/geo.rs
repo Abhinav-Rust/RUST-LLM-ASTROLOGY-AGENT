@@ -14,20 +14,14 @@ struct NominatimResult {
 }
 
 pub async fn get_location_data(
+    client: &Client,
     city: &str,
     naive_dt: NaiveDateTime,
 ) -> Result<(f64, f64, f64), String> {
-    let client = Client::builder()
-        .user_agent("AstroAgent/1.0")
-        .build()
-        .map_err(|e| format!("Client Error: {}", e))?;
-
-    let url = format!(
-        "https://nominatim.openstreetmap.org/search?q={}&format=json&limit=1",
-        city
-    );
     let response = client
-        .get(url)
+        .get("https://nominatim.openstreetmap.org/search")
+        .header("User-Agent", "AstroAgent/1.0")
+        .query(&[("q", city), ("format", "json"), ("limit", "1")])
         .send()
         .await
         .map_err(|e| format!("Failed to reach Nominatim: {}", e))?;
@@ -74,4 +68,24 @@ pub async fn get_location_data(
     println!("Historical UTC Offset: {:.2} hours", offset_hours);
 
     Ok((lat, lon, offset_hours))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_finder_timezone_lookup() {
+        // London: lon 0.0, lat 51.5
+        let tz_london = FINDER.get_tz_name(0.0, 51.5);
+        assert_eq!(tz_london, "Europe/London");
+
+        // New York: lon -74.0, lat 40.7
+        let tz_ny = FINDER.get_tz_name(-74.0, 40.7);
+        assert_eq!(tz_ny, "America/New_York");
+
+        // Tokyo: lon 139.7, lat 35.6
+        let tz_tokyo = FINDER.get_tz_name(139.7, 35.6);
+        assert_eq!(tz_tokyo, "Asia/Tokyo");
+    }
 }
