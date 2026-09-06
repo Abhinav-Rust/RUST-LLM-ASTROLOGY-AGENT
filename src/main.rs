@@ -200,6 +200,54 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_atomic_delete_client_transaction() -> Result<()> {
+        let mut conn = init_test_db()?;
+
+        let (client_id, _) = manage_client(
+            &conn,
+            "Bob Marley",
+            "Kingston",
+            "06/02/1945",
+            "02:30 AM",
+            "Date: 06/02/1945, Time: 02:30 AM, UTC Offset: -5.00",
+        )?;
+
+        save_reading(
+            &conn,
+            client_id,
+            "Will my music inspire generations?",
+            "Undoubtedly.",
+        )?;
+
+        // Perform deletion within an explicit transaction as in delete_client
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM Readings WHERE client_id = ?",
+            params![client_id],
+        )?;
+        tx.execute("DELETE FROM Clients WHERE id = ?", params![client_id])?;
+        tx.commit()?;
+
+        // Verify client deletion
+        let client_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Clients WHERE id = ?",
+            params![client_id],
+            |r| r.get(0),
+        )?;
+        assert_eq!(client_count, 0);
+
+        // Verify associated readings deletion
+        let reading_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Readings WHERE client_id = ?",
+            params![client_id],
+            |r| r.get(0),
+        )?;
+        assert_eq!(reading_count, 0);
+
+        Ok(())
+    }
 }
 
 fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &str) -> Result<()> {
@@ -345,7 +393,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn delete_client(conn: &Connection) -> Result<()> {
+fn delete_client(conn: &mut Connection) -> Result<()> {
     let id: i64 = Input::new()
         .with_prompt("Enter the ID of the client to DELETE (or 0 to cancel)")
         .interact_text()
@@ -363,8 +411,10 @@ fn delete_client(conn: &Connection) -> Result<()> {
         .unwrap();
 
     if confirmed {
-        conn.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
-        conn.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
+        tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+        tx.commit()?;
         println!("Client and associated records deleted permanently.");
     } else {
         println!("Deletion cancelled.");
@@ -583,7 +633,7 @@ async fn execute_reading_flow(
     println!("\nInitializing Astrology Workflow...");
 
     println!("Resolving Location and Historical Timezone for {}...", city);
-    let (lat, lon, offset) = match geo::get_location_data(&city, naive_dt).await {
+    let (lat, lon, offset) = match geo::get_location_data(&client, &city, naive_dt).await {
         Ok(data) => data,
         Err(e) => {
             eprintln!("Location Resolution Error: {}", e);
@@ -805,7 +855,7 @@ fn wait_for_enter() {
 
 #[tokio::main]
 async fn main() {
-    let conn = init_db().expect("Database Initialization Error");
+    let mut conn = init_db().expect("Database Initialization Error");
     let args: Vec<String> = env::args().collect();
 
     // Support CLI mode for backwards compatibility
@@ -885,7 +935,7 @@ async fn main() {
                 wait_for_enter();
             }
             5 => {
-                let _ = delete_client(&conn);
+                let _ = delete_client(&mut conn);
                 wait_for_enter();
             }
             6 => {

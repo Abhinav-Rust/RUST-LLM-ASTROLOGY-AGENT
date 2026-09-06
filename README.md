@@ -16,9 +16,9 @@ This project demonstrates a high-performance system designed to orchestrate comp
 
 - **Multi-agent orchestration** — Agent 1 extracts structured parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data.
 - **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
-- **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
-- **Zero-copy prompt pipelines** — Multi-stage prompt assembly with data anonymization layers before API submission.
-- **Robust testing & persistence** — In-memory SQLite integration tests, comprehensive API backoff priority verification, and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Connection lifecycle & pooling** — Connection pooling across HTTP API operations combined with deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
+- **Zero-copy prompt pipelines & PII anonymization** — Multi-stage prompt assembly with client data anonymization before external API submission.
+- **Robust persistence & transactional integrity** — Embedded SQLite storage with atomic multi-table transactions (`conn.transaction()`), automated schema migrations, client search/fast-tracking, and robust filename sanitization.
 
 ---
 
@@ -36,13 +36,14 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 |-----------|-----------|
 | Language | Rust (Edition 2024) |
 | Async Runtime | Tokio |
-| HTTP Client | Reqwest (with JSON, connection tuning) |
+| HTTP Client | Reqwest (with JSON, connection pooling, and connection tuning) |
 | LLM Provider | Google Gemini API (v1beta) |
-| Database | SQLite via rusqlite (bundled) |
-| Geocoding | Nominatim (OpenStreetMap) |
+| Database | SQLite via rusqlite (bundled, atomic transactions) |
+| Geocoding | Nominatim (OpenStreetMap via URL query encoding) |
 | Timezone Resolution | `tzf-rs` (offline, embedded TZ database) |
 | Historical TZ Offsets | `chrono-tz` |
-| TUI | `dialoguer` + `console` |
+| TUI / Wizard | `dialoguer` + `console` |
+| Cross-Platform Launch | `open` crate |
 | Serialization | `serde` + `serde_json` |
 
 ---
@@ -52,28 +53,32 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 ```
 src/
 ├── lib.rs        # Shared library for all modules
-├── main.rs       # CLI/TUI, orchestration, DB layer, presentation
-├── api.rs        # Gemini API client, retry logic, backoff engine
-├── math.rs       # [STUBBED] Planetary position calculations
-├── rules.rs      # [STUBBED] Vedic astrology rules engine
+├── main.rs       # Interactive TUI/CLI, orchestration, DB layer, transaction manager
+├── api.rs        # Gemini API client, 3-tier backoff engine, rate limit parser
+├── math.rs       # [STUBBED] Planetary position & house system types
+├── rules.rs      # [STUBBED] Vedic astrology rules engine data structures
 ├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator
-├── geo.rs        # Geocoding + historical timezone resolution
+├── geo.rs        # Geocoding (connection-pooled Nominatim) + historical timezone resolution
+├── utils.rs      # Cross-cutting utilities (filename sanitization with underscore collapsing)
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```
 
 ---
 
-## Running
+## Running & Testing
 
 ```bash
 # Set your Gemini API key
 export GEMINI_API_KEY="your-key-here"
 
-# Run tests
+# Run all verification checks (unit tests, clippy, formatting)
 cargo test
+cargo check
+cargo clippy --all-targets
+cargo fmt --check
 
-# Build and run
+# Build and run interactive console program
 cargo run --bin rust_llm_astrology_agent
 ```
 
