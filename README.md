@@ -14,17 +14,18 @@
 
 This project demonstrates a high-performance system designed to orchestrate complex, multi-step AI workflows against rate-limited APIs. While the system was originally deployed for production Vedic astrology readings, the core patterns and architecture generalize to any complex multi-agent domain requiring:
 
-- **Multi-agent orchestration** — Agent 1 extracts structured parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data.
-- **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
-- **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
-- **Zero-copy prompt pipelines** — Multi-stage prompt assembly with data anonymization layers before API submission.
-- **Robust testing & persistence** — In-memory SQLite integration tests, comprehensive API backoff priority verification, and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Multi-Agent Orchestration** — Agent 1 extracts structured parameters (temporal targets) from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data with an inter-agent rate-limit cooldown.
+- **Resilient API Communication** — Custom 3-tier dynamic backoff parsing `"retry in Xs"` directly from JSON error payloads, respecting `Retry-After` HTTP headers, with exponential jitter fallbacks up to configurable retry ceilings.
+- **Connection Lifecycle Management & Shared Pooling** — Deliberate HTTP connection tuning (`pool_idle_timeout`, `pool_max_idle_per_host`, disabled TCP keepalive) and shared `reqwest::Client` connection pooling across geocoding and LLM requests.
+- **Data Anonymization & Security** — Client PII is stripped from prompt payloads before API submission; geocoding query parameters are strictly URL-encoded using `.query(...)` builders.
+- **Transactional Persistence & Utility Safety** — Atomic SQLite database transactions (`conn.transaction()`) for client and reading record lifecycles, non-destructive migrations, and filename sanitization (`sanitize_filename`).
+- **Interactive Terminal & HTML Presentation** — Rich CLI/TUI experience built with `dialoguer` and `console`, with automatic HTML reading generation and cross-platform browser opening via `open`.
 
 ---
 
 ## Architecture & Engineering
 
-The comprehensive architecture (including our 3-tier API backoff strategy, multi-agent pipeline, and data anonymization layer) has been moved to our documentation folder.
+The comprehensive architecture (including our 3-tier API backoff strategy, multi-agent pipeline, data anonymization layer, and database schema) is detailed in our documentation folder.
 
 Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mermaid.js diagrams.
 
@@ -36,13 +37,14 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 |-----------|-----------|
 | Language | Rust (Edition 2024) |
 | Async Runtime | Tokio |
-| HTTP Client | Reqwest (with JSON, connection tuning) |
+| HTTP Client | Reqwest (with JSON, connection pooling & tuning) |
 | LLM Provider | Google Gemini API (v1beta) |
-| Database | SQLite via rusqlite (bundled) |
-| Geocoding | Nominatim (OpenStreetMap) |
-| Timezone Resolution | `tzf-rs` (offline, embedded TZ database) |
+| Database | SQLite via rusqlite (bundled with transaction safety) |
+| Geocoding | Nominatim (OpenStreetMap with query encoding) |
+| Timezone Resolution | `tzf-rs` (offline embedded TZ database) |
 | Historical TZ Offsets | `chrono-tz` |
-| TUI | `dialoguer` + `console` |
+| TUI / CLI | `dialoguer` + `console` |
+| File & Launch Utils | `open` (cross-platform) + custom filename sanitization |
 | Serialization | `serde` + `serde_json` |
 
 ---
@@ -51,33 +53,38 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 
 ```
 src/
-├── lib.rs        # Shared library for all modules
-├── main.rs       # CLI/TUI, orchestration, DB layer, presentation
-├── api.rs        # Gemini API client, retry logic, backoff engine
-├── math.rs       # [STUBBED] Planetary position calculations
-├── rules.rs      # [STUBBED] Vedic astrology rules engine
-├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator
-├── geo.rs        # Geocoding + historical timezone resolution
+├── lib.rs        # Shared library module exports
+├── main.rs       # Interactive CLI/TUI, orchestration, transactional DB layer, HTML presentation
+├── api.rs        # Gemini API client, rate limit parsing & 3-tier backoff engine
+├── math.rs       # [STUBBED] Planetary position & house calculation signatures
+├── rules.rs      # [STUBBED] Vedic astrology rules engine & dignity evaluation signatures
+├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator signature
+├── geo.rs        # Geocoding via Nominatim with connection pooling & offline timezone resolution
+├── utils.rs      # String and filename sanitization utilities
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```
 
 ---
 
-## Running
+## Running & Verification
 
 ```bash
 # Set your Gemini API key
 export GEMINI_API_KEY="your-key-here"
 
-# Run tests
+# Run all unit and integration tests
 cargo test
 
-# Build and run
+# Check code formatting & lints
+cargo fmt --check
+cargo clippy --all-targets
+
+# Run the interactive application
 cargo run --bin rust_llm_astrology_agent
 ```
 
-> **Note:** The stubbed math/rules/dasha modules return dummy data. The pipeline will execute end-to-end but the generated readings will lack real astronomical input.
+> **Note:** The stubbed math/rules/dasha modules return structural dummy data. The pipeline executes end-to-end and outputs formatted HTML readings, but generated readings will reflect redacted domain logic.
 
 ---
 

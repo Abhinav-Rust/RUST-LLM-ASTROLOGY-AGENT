@@ -200,6 +200,45 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_delete_client_record_atomic() -> Result<()> {
+        let mut conn = init_test_db()?;
+
+        let (client_id, _) = manage_client(
+            &conn,
+            "Alice Smith",
+            "Paris",
+            "01/01/1995",
+            "14:30",
+            "Date: 01/01/1995, Time: 14:30, UTC Offset: 1.00",
+        )?;
+
+        save_reading(
+            &conn,
+            client_id,
+            "What is my career outlook?",
+            "Promising alignment.",
+        )?;
+
+        delete_client_record(&mut conn, client_id)?;
+
+        let count_clients: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Clients WHERE id = ?",
+            params![client_id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(count_clients, 0);
+
+        let count_readings: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Readings WHERE client_id = ?",
+            params![client_id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(count_readings, 0);
+
+        Ok(())
+    }
 }
 
 fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &str) -> Result<()> {
@@ -345,7 +384,15 @@ fn edit_client(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn delete_client(conn: &Connection) -> Result<()> {
+pub fn delete_client_record(conn: &mut Connection, id: i64) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
+    tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn delete_client(conn: &mut Connection) -> Result<()> {
     let id: i64 = Input::new()
         .with_prompt("Enter the ID of the client to DELETE (or 0 to cancel)")
         .interact_text()
@@ -363,8 +410,7 @@ fn delete_client(conn: &Connection) -> Result<()> {
         .unwrap();
 
     if confirmed {
-        conn.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
-        conn.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+        delete_client_record(conn, id)?;
         println!("Client and associated records deleted permanently.");
     } else {
         println!("Deletion cancelled.");
@@ -583,7 +629,7 @@ async fn execute_reading_flow(
     println!("\nInitializing Astrology Workflow...");
 
     println!("Resolving Location and Historical Timezone for {}...", city);
-    let (lat, lon, offset) = match geo::get_location_data(&city, naive_dt).await {
+    let (lat, lon, offset) = match geo::get_location_data(&client, &city, naive_dt).await {
         Ok(data) => data,
         Err(e) => {
             eprintln!("Location Resolution Error: {}", e);
@@ -805,7 +851,7 @@ fn wait_for_enter() {
 
 #[tokio::main]
 async fn main() {
-    let conn = init_db().expect("Database Initialization Error");
+    let mut conn = init_db().expect("Database Initialization Error");
     let args: Vec<String> = env::args().collect();
 
     // Support CLI mode for backwards compatibility
@@ -885,7 +931,7 @@ async fn main() {
                 wait_for_enter();
             }
             5 => {
-                let _ = delete_client(&conn);
+                let _ = delete_client(&mut conn);
                 wait_for_enter();
             }
             6 => {
