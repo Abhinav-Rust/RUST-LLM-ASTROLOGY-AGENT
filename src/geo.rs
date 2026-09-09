@@ -14,20 +14,14 @@ struct NominatimResult {
 }
 
 pub async fn get_location_data(
+    client: &Client,
     city: &str,
     naive_dt: NaiveDateTime,
 ) -> Result<(f64, f64, f64), String> {
-    let client = Client::builder()
-        .user_agent("AstroAgent/1.0")
-        .build()
-        .map_err(|e| format!("Client Error: {}", e))?;
-
-    let url = format!(
-        "https://nominatim.openstreetmap.org/search?q={}&format=json&limit=1",
-        city
-    );
     let response = client
-        .get(url)
+        .get("https://nominatim.openstreetmap.org/search")
+        .header("User-Agent", "AstroAgent/1.0")
+        .query(&[("q", city), ("format", "json"), ("limit", "1")])
         .send()
         .await
         .map_err(|e| format!("Failed to reach Nominatim: {}", e))?;
