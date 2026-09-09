@@ -14,13 +14,12 @@
 
 This project demonstrates a high-performance system designed to orchestrate complex, multi-step AI workflows against rate-limited APIs. While the system was originally deployed for production Vedic astrology readings, the core patterns and architecture generalize to any complex multi-agent domain requiring:
 
-- **Multi-Agent Orchestration** — Agent 1 extracts structured temporal parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic astronomical data.
-- **Resilient API Cadence Control** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
-- **Connection Lifecycle & HTTP Pooling** — Deliberate connection pooling and lifecycle management (`pool_idle_timeout`, `pool_max_idle_per_host`, disabled TCP keepalive) passed across geocoding and LLM requests to survive rate-limited endpoints.
-- **Atomic Persistence Layer** — Robust SQLite database operations with atomic transactions (`conn.transaction()`) ensuring consistency across client profiles and historical readings.
-- **Secure Input & Path Sanitization** — Query parameter URL encoding (`.query(...)`) for external geocoding calls and clean filename sanitization with underscore collapsing and trimming.
-- **Zero-Copy Prompt Pipelines & Privacy** — Multi-stage prompt assembly with PII anonymization layers before API submission.
-- **Comprehensive Unit Testing** — In-memory SQLite transaction tests, API backoff priority verification, offline timezone resolution tests, and filename sanitization coverage.
+- **Multi-agent orchestration** — Agent 1 extracts structured parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data.
+- **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
+- **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
+- **Zero-copy prompt pipelines** — Multi-stage prompt assembly with data anonymization layers before API submission.
+- **HTTP Connection Pooling & Secure Encoding** — Reused `reqwest::Client` across geocoding and API stages with safe parameter encoding (`.query(...)`) to prevent HTTP overhead and URL injection risks.
+- **Transactional SQLite Persistence & Robust Testing** — Atomic client/reading deletions using explicit SQLite transactions (`conn.transaction()`), in-memory database integration tests, comprehensive API backoff priority verification, and clean row mapping abstractions (`ClientRecord::from_row`).
 
 ---
 
