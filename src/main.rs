@@ -202,49 +202,54 @@ mod tests {
     }
 
     #[test]
-    fn test_atomic_delete_client_transaction() -> Result<()> {
+    fn test_delete_client_transaction() -> Result<()> {
         let mut conn = init_test_db()?;
 
         let (client_id, _) = manage_client(
             &conn,
-            "Bob Marley",
-            "Kingston",
-            "06/02/1945",
-            "02:30 AM",
-            "Date: 06/02/1945, Time: 02:30 AM, UTC Offset: -5.00",
+            "Alice Smith",
+            "Paris",
+            "01/01/1995",
+            "14:30",
+            "Date: 01/01/1995, Time: 14:30, UTC Offset: 1.00",
         )?;
 
         save_reading(
             &conn,
             client_id,
-            "Will my music inspire generations?",
-            "Undoubtedly.",
+            "What is my future?",
+            "Bright future ahead.",
         )?;
 
-        // Perform deletion within an explicit transaction as in delete_client
-        let tx = conn.transaction()?;
-        tx.execute(
-            "DELETE FROM Readings WHERE client_id = ?",
-            params![client_id],
-        )?;
-        tx.execute("DELETE FROM Clients WHERE id = ?", params![client_id])?;
-        tx.commit()?;
-
-        // Verify client deletion
-        let client_count: i64 = conn.query_row(
+        let count_clients: i64 = conn.query_row(
             "SELECT COUNT(*) FROM Clients WHERE id = ?",
             params![client_id],
             |r| r.get(0),
         )?;
-        assert_eq!(client_count, 0);
+        assert_eq!(count_clients, 1);
 
-        // Verify associated readings deletion
-        let reading_count: i64 = conn.query_row(
+        let count_readings: i64 = conn.query_row(
             "SELECT COUNT(*) FROM Readings WHERE client_id = ?",
             params![client_id],
             |r| r.get(0),
         )?;
-        assert_eq!(reading_count, 0);
+        assert_eq!(count_readings, 1);
+
+        delete_client_record(&mut conn, client_id)?;
+
+        let count_clients_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Clients WHERE id = ?",
+            params![client_id],
+            |r| r.get(0),
+        )?;
+        assert_eq!(count_clients_after, 0);
+
+        let count_readings_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Readings WHERE client_id = ?",
+            params![client_id],
+            |r| r.get(0),
+        )?;
+        assert_eq!(count_readings_after, 0);
 
         Ok(())
     }
@@ -393,6 +398,14 @@ fn edit_client(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn delete_client_record(conn: &mut Connection, id: i64) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
+    tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+    tx.commit()?;
+    Ok(())
+}
+
 fn delete_client(conn: &mut Connection) -> Result<()> {
     let id: i64 = Input::new()
         .with_prompt("Enter the ID of the client to DELETE (or 0 to cancel)")
@@ -411,10 +424,7 @@ fn delete_client(conn: &mut Connection) -> Result<()> {
         .unwrap();
 
     if confirmed {
-        let tx = conn.transaction()?;
-        tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
-        tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
-        tx.commit()?;
+        delete_client_record(conn, id)?;
         println!("Client and associated records deleted permanently.");
     } else {
         println!("Deletion cancelled.");
