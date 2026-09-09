@@ -202,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_client_record_atomic() -> Result<()> {
+    fn test_delete_client_transaction() -> Result<()> {
         let mut conn = init_test_db()?;
 
         let (client_id, _) = manage_client(
@@ -217,25 +217,39 @@ mod tests {
         save_reading(
             &conn,
             client_id,
-            "What is my career outlook?",
-            "Promising alignment.",
+            "What is my future?",
+            "Bright future ahead.",
         )?;
-
-        delete_client_record(&mut conn, client_id)?;
 
         let count_clients: i64 = conn.query_row(
             "SELECT COUNT(*) FROM Clients WHERE id = ?",
             params![client_id],
-            |row| row.get(0),
+            |r| r.get(0),
         )?;
-        assert_eq!(count_clients, 0);
+        assert_eq!(count_clients, 1);
 
         let count_readings: i64 = conn.query_row(
             "SELECT COUNT(*) FROM Readings WHERE client_id = ?",
             params![client_id],
-            |row| row.get(0),
+            |r| r.get(0),
         )?;
-        assert_eq!(count_readings, 0);
+        assert_eq!(count_readings, 1);
+
+        delete_client_record(&mut conn, client_id)?;
+
+        let count_clients_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Clients WHERE id = ?",
+            params![client_id],
+            |r| r.get(0),
+        )?;
+        assert_eq!(count_clients_after, 0);
+
+        let count_readings_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM Readings WHERE client_id = ?",
+            params![client_id],
+            |r| r.get(0),
+        )?;
+        assert_eq!(count_readings_after, 0);
 
         Ok(())
     }
@@ -384,7 +398,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-pub fn delete_client_record(conn: &mut Connection, id: i64) -> Result<()> {
+fn delete_client_record(conn: &mut Connection, id: i64) -> Result<()> {
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
     tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
