@@ -37,13 +37,14 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 |-----------|-----------|
 | Language | Rust (Edition 2024) |
 | Async Runtime | Tokio |
-| HTTP Client | Reqwest (with JSON, connection tuning) |
+| HTTP Client | Reqwest (with JSON, connection pooling, and connection tuning) |
 | LLM Provider | Google Gemini API (v1beta) |
-| Database | SQLite via rusqlite (bundled) |
-| Geocoding | Nominatim (OpenStreetMap) |
+| Database | SQLite via rusqlite (bundled, atomic transactions) |
+| Geocoding | Nominatim (OpenStreetMap via URL query encoding) |
 | Timezone Resolution | `tzf-rs` (offline, embedded TZ database) |
 | Historical TZ Offsets | `chrono-tz` |
-| TUI | `dialoguer` + `console` |
+| TUI / Wizard | `dialoguer` + `console` |
+| Cross-Platform Launch | `open` crate |
 | Serialization | `serde` + `serde_json` |
 
 ---
@@ -53,28 +54,32 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 ```
 src/
 ├── lib.rs        # Shared library for all modules
-├── main.rs       # CLI/TUI, orchestration, DB layer, presentation
-├── api.rs        # Gemini API client, retry logic, backoff engine
-├── math.rs       # [STUBBED] Planetary position calculations
-├── rules.rs      # [STUBBED] Vedic astrology rules engine
+├── main.rs       # Interactive TUI/CLI, orchestration, DB layer, transaction manager
+├── api.rs        # Gemini API client, 3-tier backoff engine, rate limit parser
+├── math.rs       # [STUBBED] Planetary position & house system types
+├── rules.rs      # [STUBBED] Vedic astrology rules engine data structures
 ├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator
-├── geo.rs        # Geocoding + historical timezone resolution
+├── geo.rs        # Geocoding (connection-pooled Nominatim) + historical timezone resolution
+├── utils.rs      # Cross-cutting utilities (filename sanitization with underscore collapsing)
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```
 
 ---
 
-## Running
+## Running & Testing
 
 ```bash
 # Set your Gemini API key
 export GEMINI_API_KEY="your-key-here"
 
-# Run tests
+# Run all verification checks (unit tests, clippy, formatting)
 cargo test
+cargo check
+cargo clippy --all-targets
+cargo fmt --check
 
-# Build and run
+# Build and run interactive console program
 cargo run --bin rust_llm_astrology_agent
 ```
 
