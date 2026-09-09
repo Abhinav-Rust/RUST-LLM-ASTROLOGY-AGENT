@@ -69,3 +69,25 @@ pub async fn get_location_data(
 
     Ok((lat, lon, offset_hours))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{NaiveDate, NaiveTime};
+
+    #[test]
+    fn test_timezone_resolution() {
+        // Test coordinates for London (51.5074, -0.1278)
+        let tz_name = FINDER.get_tz_name(-0.1278, 51.5074);
+        assert_eq!(tz_name, "Europe/London");
+
+        let tz: Tz = tz_name.parse().unwrap();
+        let naive_dt = NaiveDateTime::new(
+            NaiveDate::from_ymd_opt(2023, 1, 1).unwrap(),
+            NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+        );
+        let dt = tz.from_local_datetime(&naive_dt).earliest().unwrap();
+        let offset_hours = dt.offset().fix().local_minus_utc() as f64 / 3600.0;
+        assert_eq!(offset_hours, 0.0); // GMT in winter
+    }
+}

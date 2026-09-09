@@ -25,7 +25,7 @@ This project demonstrates a high-performance system designed to orchestrate comp
 
 ## Architecture & Engineering
 
-The comprehensive architecture (including our 3-tier API backoff strategy, multi-agent pipeline, and data anonymization layer) has been moved to our documentation folder.
+The comprehensive architecture (including our 3-tier API backoff strategy, multi-agent pipeline, connection lifecycle, and data anonymization layer) is detailed in our documentation.
 
 Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mermaid.js diagrams.
 
@@ -37,9 +37,9 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 |-----------|-----------|
 | Language | Rust (Edition 2024) |
 | Async Runtime | Tokio |
-| HTTP Client | Reqwest (with JSON, connection tuning) |
-| LLM Provider | Google Gemini API (v1beta) |
-| Database | SQLite via rusqlite (bundled) |
+| HTTP Client | Reqwest (connection pooling & URL parameter encoding) |
+| LLM Provider | Google Gemini API (`gemini-3.1-flash-lite`) |
+| Database | SQLite via rusqlite (with atomic transactions) |
 | Geocoding | Nominatim (OpenStreetMap) |
 | Timezone Resolution | `tzf-rs` (offline, embedded TZ database) |
 | Historical TZ Offsets | `chrono-tz` |
@@ -52,13 +52,14 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 
 ```
 src/
-├── lib.rs        # Shared library for all modules
-├── main.rs       # CLI/TUI, orchestration, DB layer, presentation
-├── api.rs        # Gemini API client, retry logic, backoff engine
+├── lib.rs        # Shared library module declarations
+├── main.rs       # CLI/TUI, orchestration, atomic SQLite DB layer, HTML report exporter
+├── api.rs        # Gemini API client, 3-tier backoff engine, Agent 1 date extractor
+├── geo.rs        # Nominatim geocoding with connection pooling & offline timezone resolution
+├── utils.rs      # Filename sanitization utilities (collapse & trim)
 ├── math.rs       # [STUBBED] Planetary position calculations
 ├── rules.rs      # [STUBBED] Vedic astrology rules engine
 ├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator
-├── geo.rs        # Geocoding + historical timezone resolution
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```
@@ -71,10 +72,13 @@ src/
 # Set your Gemini API key
 export GEMINI_API_KEY="your-key-here"
 
-# Run tests
+# Run full test suite (unit tests for DB, API, Geo, and Utils)
 cargo test
 
-# Build and run
+# Check code health & lints
+cargo check && cargo clippy --all-targets && cargo fmt --check
+
+# Build and run interactive TUI
 cargo run --bin rust_llm_astrology_agent
 ```
 

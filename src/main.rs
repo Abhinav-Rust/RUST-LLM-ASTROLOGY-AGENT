@@ -97,6 +97,14 @@ fn manage_client(
     }
 }
 
+pub fn delete_client_by_id(conn: &mut Connection, id: i64) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
+    tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+    tx.commit()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +270,7 @@ fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &st
     )?;
     Ok(())
 }
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClientRecord {
     pub id: i64,
@@ -691,7 +700,6 @@ async fn execute_reading_flow(
         "Whole Sign (Required for Standard Vedic)",
     ];
 
-    // Added fully qualified dialoguer just in case, though Select is imported.
     let house_selection = Select::new()
         .with_prompt("Select House System")
         .items(house_options)
