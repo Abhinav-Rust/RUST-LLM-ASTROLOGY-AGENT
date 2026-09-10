@@ -3,14 +3,14 @@
 // planetary longitude computation, house cusp calculation, and Parivartan Yoga detection.
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum System {
     Vedic,
     KP,
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HouseSystem {
     Placidus,
     #[default]
@@ -30,6 +30,7 @@ pub struct BirthDetails {
 }
 
 #[allow(dead_code)]
+#[derive(Clone, Debug)]
 pub struct PlanetData {
     pub name: String,
     pub longitude: f64,
@@ -37,6 +38,7 @@ pub struct PlanetData {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct AstroData {
     pub system: System,
     pub planets: Vec<PlanetData>,
@@ -102,25 +104,22 @@ mod tests {
         assert_eq!(astro_data.ascendant, 0.0);
 
         let planet_names: Vec<&str> = astro_data.planets.iter().map(|p| p.name.as_str()).collect();
-        assert!(planet_names.contains(&"Sun"));
-        assert!(planet_names.contains(&"Moon"));
+        assert_eq!(
+            planet_names,
+            vec![
+                "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"
+            ]
+        );
     }
 
     #[test]
     fn test_detect_parivartan_yogas_stub() {
-        let planets = vec![
-            PlanetData {
-                name: "Sun".to_string(),
-                longitude: 10.0,
-                speed: 1.0,
-            },
-            PlanetData {
-                name: "Moon".to_string(),
-                longitude: 120.0,
-                speed: 12.0,
-            },
-        ];
-        let result = detect_parivartan_yogas(&planets);
-        assert_eq!(result, "");
+        let planets = vec![PlanetData {
+            name: "Sun".to_string(),
+            longitude: 10.0,
+            speed: 1.0,
+        }];
+        let yogas = detect_parivartan_yogas(&planets);
+        assert!(yogas.is_empty());
     }
 }

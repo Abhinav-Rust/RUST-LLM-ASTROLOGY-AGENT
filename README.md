@@ -18,8 +18,10 @@ This project demonstrates a high-performance system designed to orchestrate comp
 - **Resilient API communication** — Custom 3-tier exponential backoff with dynamic rate-limit parsing directly from error message bodies (`"retry in"`, `"retry after"`, `"try again in"`), `Retry-After` header respect, transient HTTP 5xx retry handling, and configurable retry ceilings.
 - **Type-safe Geocoding & Query Encoding** — Structured `LocationData` model paired with URL query-string parameter encoding for safe handling of international location queries.
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
-- **Zero-copy prompt pipelines** — Multi-stage prompt assembly with data anonymization layers before API submission.
-- **Robust testing & persistence** — In-memory SQLite integration tests, client updates & row-affected validations, comprehensive API backoff verification, and unit test coverage across all codebase modules.
+- **Zero-copy prompt pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
+- **HTTP Connection Pooling & Secure Encoding** — Reused `reqwest::Client` across geocoding and API stages with safe parameter encoding (`.query(...)`) to prevent HTTP overhead and URL injection risks.
+- **Transactional SQLite Persistence & Robust Client Management** — Atomic client and reading deletions using explicit SQLite transactions (`conn.transaction()`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Enhanced Utilities & Full Test Coverage** — Robust filename sanitization (`sanitize_filename`) with underscore collapsing and trimming, alongside comprehensive unit and integration tests across API, database, utilities, and stubbed domain modules.
 
 ---
 
@@ -52,14 +54,14 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 
 ```
 src/
-├── lib.rs        # Shared library for all modules
-├── main.rs       # CLI/TUI, orchestration, SQLite DB persistence & client management
-├── api.rs        # Gemini API client with 3-tier backoff & 5xx server error retry
-├── math.rs       # [STUBBED] Planetary position calculations
-├── rules.rs      # [STUBBED] Vedic astrology rules engine
-├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator
-├── geo.rs        # Geocoding (`LocationData`), query encoding & historical timezone resolution
-├── utils.rs      # Filename sanitization and string utilities
+├── lib.rs        # Shared library exposing API, dasha, geo, math, rules, and utils
+├── main.rs       # CLI/TUI, orchestration, DB layer, presentation, and DB tests
+├── api.rs        # Gemini API client, retry logic, backoff engine, and serialization tests
+├── math.rs       # [STUBBED] Planetary position calculations and math engine tests
+├── rules.rs      # [STUBBED] Vedic astrology rules engine and summary tests
+├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator and engine tests
+├── geo.rs        # Geocoding + historical timezone resolution
+├── utils.rs      # Filename sanitization utilities and edge-case unit tests
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```
