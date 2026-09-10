@@ -15,7 +15,8 @@
 This project demonstrates a high-performance system designed to orchestrate complex, multi-step AI workflows against rate-limited APIs. While the system was originally deployed for production Vedic astrology readings, the core patterns and architecture generalize to any complex multi-agent domain requiring:
 
 - **Multi-agent orchestration** — Agent 1 extracts structured parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data.
-- **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
+- **Resilient API communication** — Custom 3-tier exponential backoff with dynamic rate-limit parsing directly from error message bodies (`"retry in"`, `"retry after"`, `"try again in"`), `Retry-After` header respect, transient HTTP 5xx retry handling, and configurable retry ceilings.
+- **Type-safe Geocoding & Query Encoding** — Structured `LocationData` model paired with URL query-string parameter encoding for safe handling of international location queries.
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
 - **Zero-copy prompt pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
 - **HTTP Connection Pooling & Secure Encoding** — Reused `reqwest::Client` across geocoding and API stages with safe parameter encoding (`.query(...)`) to prevent HTTP overhead and URL injection risks.

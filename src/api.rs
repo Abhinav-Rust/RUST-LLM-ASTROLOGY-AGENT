@@ -182,29 +182,21 @@ async fn call_gemini_once(
     }
 }
 
-/// Parses "retry in Xs" or "retry in X.Ys" from a Gemini error message body.
+/// Parses "retry in Xs", "retry after Xs", or "try again in Xs" from a Gemini error message body.
 fn parse_retry_seconds_from_message(message: &str) -> Option<f64> {
-    // Look for pattern: "retry in <number>s" (case-insensitive)
     let lower = message.to_lowercase();
-    if let Some(idx) = lower.find("retry in ") {
-        let after = &lower[idx + 9..]; // skip "retry in "
-        let num_str: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_digit() || *c == '.')
-            .collect();
-        if !num_str.is_empty() {
-            return num_str.parse::<f64>().ok();
-        }
-    }
-    // Also try "retry after <number>s"
-    if let Some(idx) = lower.find("retry after ") {
-        let after = &lower[idx + 12..];
-        let num_str: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_digit() || *c == '.')
-            .collect();
-        if !num_str.is_empty() {
-            return num_str.parse::<f64>().ok();
+    let patterns = ["retry in ", "retry after ", "try again in "];
+
+    for pat in patterns {
+        if let Some(idx) = lower.find(pat) {
+            let after = &lower[idx + pat.len()..];
+            let num_str: String = after
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            if let Ok(val) = num_str.parse::<f64>() {
+                return Some(val);
+            }
         }
     }
     None
@@ -326,6 +318,21 @@ pub async fn call_gemini_with_retry(
                 );
                 sleep(wait).await;
             }
+            Err(GeminiError::ServerError(ref msg)) => {
+                if attempt == MAX_RETRIES - 1 {
+                    return Err(GeminiError::ServerError(msg.clone()));
+                }
+                let wait = backoff_duration(attempt, None, None);
+                println!(
+                    "{}",
+                    style(format!(
+                        "[!] Server Transient Error ({}), retrying in {:?}...",
+                        msg, wait
+                    ))
+                    .yellow()
+                );
+                sleep(wait).await;
+            }
             Err(e) => return Err(e),
         }
     }
@@ -384,6 +391,10 @@ mod tests {
         assert_eq!(
             parse_retry_seconds_from_message("Rate limit reached, retry after 10s"),
             Some(10.0)
+        );
+        assert_eq!(
+            parse_retry_seconds_from_message("Overloaded, please try again in 45s"),
+            Some(45.0)
         );
         assert_eq!(
             parse_retry_seconds_from_message("Random error message with no retry info"),

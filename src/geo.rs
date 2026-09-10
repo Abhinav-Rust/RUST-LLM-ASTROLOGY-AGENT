@@ -7,6 +7,13 @@ use tzf_rs::DefaultFinder;
 
 static FINDER: Lazy<DefaultFinder> = Lazy::new(DefaultFinder::new);
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocationData {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub utc_offset_hours: f64,
+}
+
 #[derive(Deserialize)]
 struct NominatimResult {
     lat: String,
@@ -67,5 +74,26 @@ pub async fn get_location_data(
 
     println!("Historical UTC Offset: {:.2} hours", offset_hours);
 
-    Ok((lat, lon, offset_hours))
+    Ok(LocationData {
+        latitude: lat,
+        longitude: lon,
+        utc_offset_hours: offset_hours,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_location_data_struct() {
+        let loc = LocationData {
+            latitude: 51.5074,
+            longitude: -0.1278,
+            utc_offset_hours: 1.0,
+        };
+        assert_eq!(loc.latitude, 51.5074);
+        assert_eq!(loc.longitude, -0.1278);
+        assert_eq!(loc.utc_offset_hours, 1.0);
+    }
 }
