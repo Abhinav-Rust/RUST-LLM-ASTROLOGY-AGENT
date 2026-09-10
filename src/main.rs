@@ -253,6 +253,69 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_search_clients_query() -> Result<()> {
+        let conn = init_test_db()?;
+
+        manage_client(
+            &conn,
+            "Alice Smith",
+            "Paris",
+            "01/01/1995",
+            "14:30",
+            "Date: 01/01/1995, Time: 14:30, UTC Offset: 1.00",
+        )?;
+        manage_client(
+            &conn,
+            "Bob Jones",
+            "Berlin",
+            "02/02/1992",
+            "11:15",
+            "Date: 02/02/1992, Time: 11:15, UTC Offset: 1.00",
+        )?;
+
+        let search_term = "%Smith%";
+        let mut stmt = conn
+            .prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE name LIKE ?")?;
+        let results: Vec<ClientRecord> = stmt
+            .query_map(params![search_term], ClientRecord::from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Alice Smith");
+        assert_eq!(results[0].city, "Paris");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_update_client_status_and_city() -> Result<()> {
+        let conn = init_test_db()?;
+
+        let (client_id, _) = manage_client(
+            &conn,
+            "Charlie Brown",
+            "Tokyo",
+            "10/10/1988",
+            "08:00 AM",
+            "Date: 10/10/1988, Time: 08:00 AM, UTC Offset: 9.00",
+        )?;
+
+        conn.execute(
+            "UPDATE Clients SET city = ?, status = ? WHERE id = ?",
+            params!["Osaka", "Refused", client_id],
+        )?;
+
+        let mut stmt =
+            conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE id = ?")?;
+        let client = stmt.query_row(params![client_id], ClientRecord::from_row)?;
+
+        assert_eq!(client.city, "Osaka");
+        assert_eq!(client.status, "Refused");
+
+        Ok(())
+    }
 }
 
 fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &str) -> Result<()> {

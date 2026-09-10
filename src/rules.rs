@@ -56,3 +56,33 @@ pub fn format_summary(_data: &ExpertData) -> String {
     // IP REDACTED: Deterministic planetary calculations handled here.
     "[CHART SUMMARY REDACTED — Proprietary rules engine]".to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math::{self, BirthDetails, HouseSystem, System};
+
+    #[test]
+    fn test_rules_process_and_format_summary_stub() {
+        let details = BirthDetails {
+            date: "01/01/2000".to_string(),
+            time: "12:00".to_string(),
+            latitude: 0.0,
+            longitude: 0.0,
+            timezone: 0.0,
+            system: System::Vedic,
+            house_system: HouseSystem::WholeSign,
+        };
+        let astro_data = math::calculate_astrology(details).unwrap();
+
+        let expert_data = process(&astro_data);
+        assert!(expert_data.planets.is_empty());
+        assert!(expert_data.house_lordships.is_empty());
+
+        let summary = format_summary(&expert_data);
+        assert_eq!(
+            summary,
+            "[CHART SUMMARY REDACTED — Proprietary rules engine]"
+        );
+    }
+}

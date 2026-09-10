@@ -432,4 +432,55 @@ mod tests {
         let err_parse = GeminiError::ParseError("Invalid JSON".to_string());
         assert_eq!(format!("{}", err_parse), "Parse error: Invalid JSON");
     }
+
+    #[test]
+    fn test_gemini_response_deserialization() {
+        let json_data = r#"{
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            { "text": "Generated reading content" }
+                        ]
+                    }
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 100,
+                "candidatesTokenCount": 200,
+                "totalTokenCount": 300
+            }
+        }"#;
+
+        let response: Result<GeminiResponse, _> = serde_json::from_str(json_data);
+        assert!(response.is_ok());
+        let res = response.unwrap();
+        assert_eq!(
+            res.candidates.unwrap()[0].content.parts[0].text,
+            "Generated reading content"
+        );
+        let usage = res.usage_metadata.unwrap();
+        assert_eq!(usage.prompt_token_count, Some(100));
+        assert_eq!(usage.candidates_token_count, Some(200));
+        assert_eq!(usage.total_token_count, Some(300));
+    }
+
+    #[test]
+    fn test_gemini_error_envelope_deserialization() {
+        let json_data = r#"{
+            "error": {
+                "message": "Resource exhausted, please retry in 15s.",
+                "status": "RESOURCE_EXHAUSTED"
+            }
+        }"#;
+
+        let envelope: Result<GeminiErrorEnvelope, _> = serde_json::from_str(json_data);
+        assert!(envelope.is_ok());
+        let env = envelope.unwrap();
+        assert_eq!(env.error.status, "RESOURCE_EXHAUSTED");
+        assert_eq!(
+            env.error.message,
+            "Resource exhausted, please retry in 15s."
+        );
+    }
 }

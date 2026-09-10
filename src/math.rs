@@ -3,14 +3,14 @@
 // planetary longitude computation, house cusp calculation, and Parivartan Yoga detection.
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum System {
     Vedic,
     KP,
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HouseSystem {
     Placidus,
     #[default]
@@ -30,6 +30,7 @@ pub struct BirthDetails {
 }
 
 #[allow(dead_code)]
+#[derive(Clone, Debug)]
 pub struct PlanetData {
     pub name: String,
     pub longitude: f64,
@@ -37,6 +38,7 @@ pub struct PlanetData {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct AstroData {
     pub system: System,
     pub planets: Vec<PlanetData>,
@@ -74,4 +76,50 @@ pub fn detect_parivartan_yogas(_planets: &[PlanetData]) -> String {
     // IP REDACTED: Deterministic planetary calculations handled here.
     // Original implementation detected mutual sign exchanges (Parivartan Yogas) between planets.
     String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_astrology_stub() {
+        let details = BirthDetails {
+            date: "15/08/1990".to_string(),
+            time: "10:45 AM".to_string(),
+            latitude: 51.5074,
+            longitude: -0.1278,
+            timezone: 1.0,
+            system: System::Vedic,
+            house_system: HouseSystem::WholeSign,
+        };
+
+        let result = calculate_astrology(details);
+        assert!(result.is_ok());
+
+        let astro_data = result.unwrap();
+        assert_eq!(astro_data.system, System::Vedic);
+        assert_eq!(astro_data.planets.len(), 9);
+        assert_eq!(astro_data.house_cusps.len(), 12);
+        assert_eq!(astro_data.ascendant, 0.0);
+
+        let planet_names: Vec<&str> = astro_data.planets.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(
+            planet_names,
+            vec![
+                "Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_detect_parivartan_yogas_stub() {
+        let planets = vec![PlanetData {
+            name: "Sun".to_string(),
+            longitude: 10.0,
+            speed: 1.0,
+        }];
+        let yogas = detect_parivartan_yogas(&planets);
+        assert!(yogas.is_empty());
+    }
 }
