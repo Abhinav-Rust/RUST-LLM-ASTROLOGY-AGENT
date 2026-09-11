@@ -19,8 +19,9 @@ This project demonstrates a high-performance system designed to orchestrate comp
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
 - **Zero-copy prompt pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
 - **HTTP Connection Pooling & Secure Encoding** — Reused `reqwest::Client` across geocoding and API stages with safe parameter encoding (`.query(...)`) to prevent HTTP overhead and URL injection risks.
-- **Transactional SQLite Persistence & Robust Client Management** — Atomic client and reading deletions using explicit SQLite transactions (`conn.transaction()`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
-- **Enhanced Utilities & Full Test Coverage** — Robust filename sanitization (`sanitize_filename`) with underscore collapsing and trimming, alongside comprehensive unit and integration tests across API, database, utilities, and stubbed domain modules.
+- **Transactional SQLite Persistence & Robust Client Management** — Atomic client and reading deletions using explicit SQLite transactions (`conn.transaction()`), indexed lookup queries, consolidated schema helpers (`create_tables`), and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Pinned Dependencies & Deterministic Builds** — Exact version pinning for core crates (`tzf-rs = "=1.2.0"`) preventing upstream breaking changes from affecting downstream build pipelines.
+- **Enhanced Utilities & Comprehensive Test Coverage** — Robust filename sanitization (`sanitize_filename`) with underscore collapsing and trimming, alongside thorough unit and integration test suites covering API rate-limiting, SQLite transactions, geocoding/timezone lookups (`geo.rs`), filename sanitization, and stubbed domain modules.
 
 ---
 
