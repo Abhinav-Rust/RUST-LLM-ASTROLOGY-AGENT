@@ -231,7 +231,11 @@ fn backoff_duration(attempt: u32, hint_secs: Option<u64>, message: Option<&str>)
         .saturating_mul(1u64.checked_shl(attempt).unwrap_or(1u64 << 31))
         .min(BACKOFF_MAX_MS);
 
-    let jitter_ms = rand::thread_rng().gen_range(0..=exponential);
+    let jitter_ms = if exponential > 0 {
+        rand::thread_rng().gen_range(0..=exponential)
+    } else {
+        0
+    };
 
     Duration::from_millis(jitter_ms)
 }
@@ -382,13 +386,20 @@ mod tests {
             Some(30.0)
         );
         assert_eq!(
-            parse_retry_seconds_from_message("Rate limit reached, retry after 10s"),
+            parse_retry_seconds_from_message("Rate limit reached, RETRY AFTER 10s"),
             Some(10.0)
         );
         assert_eq!(
             parse_retry_seconds_from_message("Random error message with no retry info"),
             None
         );
+    }
+
+    #[test]
+    fn test_backoff_duration_large_attempt_safety() {
+        // High attempt count should saturate at BACKOFF_MAX_MS rather than overflowing
+        let dur = backoff_duration(100, None, None);
+        assert!(dur <= Duration::from_millis(BACKOFF_MAX_MS));
     }
 
     #[test]
