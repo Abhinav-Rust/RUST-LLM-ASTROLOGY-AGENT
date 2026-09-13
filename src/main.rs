@@ -7,9 +7,7 @@ use std::env;
 use std::io::{self, Write};
 use tokio::io::AsyncWriteExt;
 
-fn init_db() -> Result<Connection> {
-    let conn = Connection::open("astrology_journal.db")?;
-
+fn create_tables(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS Clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,56 +43,67 @@ fn init_db() -> Result<Connection> {
         "CREATE INDEX IF NOT EXISTS idx_readings_client_id ON Readings(client_id)",
         (),
     )?;
+    Ok(())
+}
+
+fn init_db() -> Result<Connection> {
+    let conn = Connection::open("astrology_journal.db")?;
+    create_tables(&conn)?;
     Ok(conn)
 }
 
 fn manage_client(
-    conn: &Connection,
+    conn: &mut Connection,
     name: &str,
     city: &str,
     dob: &str,
     time: &str,
     birth_data: &str,
 ) -> Result<(i64, String)> {
-    let mut stmt = conn.prepare("SELECT id, status FROM Clients WHERE name = ?")?;
-    let client_opt = stmt
-        .query_row(params![name], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })
-        .optional()?;
+    let tx = conn.transaction()?;
+    let result = {
+        let mut stmt = tx.prepare("SELECT id, status FROM Clients WHERE name = ?")?;
+        let client_opt = stmt
+            .query_row(params![name], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .optional()?;
 
-    match client_opt {
-        Some((id, status)) => {
-            let _ = conn.execute(
-                "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
-                params![dob, time, id],
-            );
-            println!(
-                "{}",
-                style(format!(
-                    "\n[!] ✨ Repeat Customer Detected: Welcome back, {} (ID: {})",
-                    name, id
-                ))
-                .cyan()
-                .bold()
-            );
-            Ok((id, status))
-        }
-        None => {
-            conn.execute(
-                "INSERT INTO Clients (name, city, birth_data, status, dob, time) VALUES (?, ?, ?, ?, ?, ?)",
-                params![name, city, birth_data, "Active", dob, time],
-            )?;
-            let id = conn.last_insert_rowid();
-            println!(
-                "{}",
-                style(format!("\n[+] 🆕 New Client Profile Created: {}", name))
-                    .green()
+        match client_opt {
+            Some((id, status)) => {
+                tx.execute(
+                    "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
+                    params![dob, time, id],
+                )?;
+                println!(
+                    "{}",
+                    style(format!(
+                        "\n[!] ✨ Repeat Customer Detected: Welcome back, {} (ID: {})",
+                        name, id
+                    ))
+                    .cyan()
                     .bold()
-            );
-            Ok((id, "Active".to_string()))
+                );
+                (id, status)
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO Clients (name, city, birth_data, status, dob, time) VALUES (?, ?, ?, ?, ?, ?)",
+                    params![name, city, birth_data, "Active", dob, time],
+                )?;
+                let id = tx.last_insert_rowid();
+                println!(
+                    "{}",
+                    style(format!("\n[+] 🆕 New Client Profile Created: {}", name))
+                        .green()
+                        .bold()
+                );
+                (id, "Active".to_string())
+            }
         }
-    }
+    };
+    tx.commit()?;
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -103,42 +112,17 @@ mod tests {
 
     fn init_test_db() -> Result<Connection> {
         let conn = Connection::open_in_memory()?;
-
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS Clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                city TEXT NOT NULL,
-                birth_data TEXT NOT NULL,
-                status TEXT NOT NULL,
-                dob TEXT,
-                time TEXT
-            )",
-            (),
-        )?;
-
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS Readings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id INTEGER NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                question TEXT NOT NULL,
-                full_ai_response TEXT NOT NULL,
-                FOREIGN KEY(client_id) REFERENCES Clients(id)
-            )",
-            (),
-        )?;
-
+        create_tables(&conn)?;
         Ok(conn)
     }
 
     #[test]
     fn test_manage_client_new_and_repeat() -> Result<()> {
-        let conn = init_test_db()?;
+        let mut conn = init_test_db()?;
 
         // New client creation
         let (id1, status1) = manage_client(
-            &conn,
+            &mut conn,
             "John Doe",
             "London",
             "15/08/1990",
@@ -150,7 +134,7 @@ mod tests {
 
         // Repeat client check
         let (id2, status2) = manage_client(
-            &conn,
+            &mut conn,
             "John Doe",
             "London",
             "15/08/1990",
@@ -165,10 +149,10 @@ mod tests {
 
     #[test]
     fn test_save_reading_and_query() -> Result<()> {
-        let conn = init_test_db()?;
+        let mut conn = init_test_db()?;
 
         let (client_id, _) = manage_client(
-            &conn,
+            &mut conn,
             "Jane Smith",
             "Paris",
             "01/01/1995",
@@ -206,7 +190,7 @@ mod tests {
         let mut conn = init_test_db()?;
 
         let (client_id, _) = manage_client(
-            &conn,
+            &mut conn,
             "Alice Smith",
             "Paris",
             "01/01/1995",
@@ -256,10 +240,10 @@ mod tests {
 
     #[test]
     fn test_search_clients_query() -> Result<()> {
-        let conn = init_test_db()?;
+        let mut conn = init_test_db()?;
 
         manage_client(
-            &conn,
+            &mut conn,
             "Alice Smith",
             "Paris",
             "01/01/1995",
@@ -267,7 +251,7 @@ mod tests {
             "Date: 01/01/1995, Time: 14:30, UTC Offset: 1.00",
         )?;
         manage_client(
-            &conn,
+            &mut conn,
             "Bob Jones",
             "Berlin",
             "02/02/1992",
@@ -291,10 +275,10 @@ mod tests {
 
     #[test]
     fn test_update_client_status_and_city() -> Result<()> {
-        let conn = init_test_db()?;
+        let mut conn = init_test_db()?;
 
         let (client_id, _) = manage_client(
-            &conn,
+            &mut conn,
             "Charlie Brown",
             "Tokyo",
             "10/10/1988",
@@ -495,7 +479,16 @@ fn delete_client(conn: &mut Connection) -> Result<()> {
     Ok(())
 }
 
-fn launch_wizard() -> (String, String, String, String, String, u32) {
+pub struct ReadingParams {
+    pub name: String,
+    pub date: String,
+    pub time: String,
+    pub city: String,
+    pub question: String,
+    pub target_words: u32,
+}
+
+fn launch_wizard() -> ReadingParams {
     println!("\n--- Run New Astrology Reading ---");
 
     let name: String = Input::new()
@@ -551,16 +544,14 @@ fn launch_wizard() -> (String, String, String, String, String, u32) {
         .unwrap();
     let target_words: u32 = words_str.parse().unwrap_or(500);
 
-    (name, date, time, city, question, target_words)
-}
-
-pub struct ReadingParams {
-    pub name: String,
-    pub date: String,
-    pub time: String,
-    pub city: String,
-    pub question: String,
-    pub target_words: u32,
+    ReadingParams {
+        name,
+        date,
+        time,
+        city,
+        question,
+        target_words,
+    }
 }
 
 fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
@@ -667,7 +658,7 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
 }
 
 async fn execute_reading_flow(
-    conn: &Connection,
+    conn: &mut Connection,
     name: String,
     date_str: String,
     time_str: String,
@@ -944,7 +935,7 @@ async fn main() {
             500
         };
         execute_reading_flow(
-            &conn,
+            &mut conn,
             name,
             date_str,
             time_str,
@@ -976,14 +967,23 @@ async fn main() {
 
         match selection {
             0 => {
-                let (name, date, time, city, question, target_words) = launch_wizard();
-                execute_reading_flow(&conn, name, date, time, city, question, target_words).await;
+                let params = launch_wizard();
+                execute_reading_flow(
+                    &mut conn,
+                    params.name,
+                    params.date,
+                    params.time,
+                    params.city,
+                    params.question,
+                    params.target_words,
+                )
+                .await;
                 wait_for_enter();
             }
             1 => {
                 if let Ok(Some(params)) = fast_track_reading(&conn) {
                     execute_reading_flow(
-                        &conn,
+                        &mut conn,
                         params.name,
                         params.date,
                         params.time,
