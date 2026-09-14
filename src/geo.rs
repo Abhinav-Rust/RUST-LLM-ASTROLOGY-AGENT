@@ -69,3 +69,42 @@ pub async fn get_location_data(
 
     Ok((lat, lon, offset_hours))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_nominatim_result_deserialization() {
+        let json_data = r#"[
+            {
+                "lat": "51.5073219",
+                "lon": "-0.1276474"
+            }
+        ]"#;
+
+        let results: Result<Vec<NominatimResult>, _> = serde_json::from_str(json_data);
+        assert!(results.is_ok());
+        let items = results.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].lat, "51.5073219");
+        assert_eq!(items[0].lon, "-0.1276474");
+
+        let lat: f64 = items[0].lat.parse().unwrap();
+        let lon: f64 = items[0].lon.parse().unwrap();
+        assert!((lat - 51.5073219).abs() < 1e-6);
+        assert!((lon - (-0.1276474)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_nominatim_result_empty_or_invalid() {
+        let empty_json = "[]";
+        let results: Vec<NominatimResult> = serde_json::from_str(empty_json).unwrap();
+        assert!(results.is_empty());
+
+        let invalid_json = r#"[{"lat": "not_a_number", "lon": "0.0"}]"#;
+        let results: Vec<NominatimResult> = serde_json::from_str(invalid_json).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].lat.parse::<f64>().is_err());
+    }
+}

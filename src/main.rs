@@ -7,9 +7,7 @@ use std::env;
 use std::io::{self, Write};
 use tokio::io::AsyncWriteExt;
 
-fn init_db() -> Result<Connection> {
-    let conn = Connection::open("astrology_journal.db")?;
-
+fn create_tables(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS Clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,6 +43,12 @@ fn init_db() -> Result<Connection> {
         "CREATE INDEX IF NOT EXISTS idx_readings_client_id ON Readings(client_id)",
         (),
     )?;
+    Ok(())
+}
+
+fn init_db() -> Result<Connection> {
+    let conn = Connection::open("astrology_journal.db")?;
+    create_tables(&conn)?;
     Ok(conn)
 }
 
@@ -103,32 +107,7 @@ mod tests {
 
     fn init_test_db() -> Result<Connection> {
         let conn = Connection::open_in_memory()?;
-
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS Clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                city TEXT NOT NULL,
-                birth_data TEXT NOT NULL,
-                status TEXT NOT NULL,
-                dob TEXT,
-                time TEXT
-            )",
-            (),
-        )?;
-
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS Readings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id INTEGER NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                question TEXT NOT NULL,
-                full_ai_response TEXT NOT NULL,
-                FOREIGN KEY(client_id) REFERENCES Clients(id)
-            )",
-            (),
-        )?;
-
+        create_tables(&conn)?;
         Ok(conn)
     }
 
