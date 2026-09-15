@@ -13,11 +13,18 @@ struct NominatimResult {
     lon: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocationData {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub utc_offset_hours: f64,
+}
+
 pub async fn get_location_data(
     client: &Client,
     city: &str,
     naive_dt: NaiveDateTime,
-) -> Result<(f64, f64, f64), String> {
+) -> Result<LocationData, String> {
     let response = client
         .get("https://nominatim.openstreetmap.org/search")
         .header("User-Agent", "AstroAgent/1.0")
@@ -67,5 +74,26 @@ pub async fn get_location_data(
 
     println!("Historical UTC Offset: {:.2} hours", offset_hours);
 
-    Ok((lat, lon, offset_hours))
+    Ok(LocationData {
+        latitude: lat,
+        longitude: lon,
+        utc_offset_hours: offset_hours,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_location_data_struct() {
+        let loc = LocationData {
+            latitude: 51.5074,
+            longitude: -0.1278,
+            utc_offset_hours: 1.0,
+        };
+        assert_eq!(loc.latitude, 51.5074);
+        assert_eq!(loc.longitude, -0.1278);
+        assert_eq!(loc.utc_offset_hours, 1.0);
+    }
 }

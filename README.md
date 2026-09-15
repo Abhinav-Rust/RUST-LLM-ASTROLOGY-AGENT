@@ -20,7 +20,7 @@ This project demonstrates a high-performance system designed to orchestrate comp
 - **Zero-copy prompt pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
 - **HTTP Connection Pooling & Secure Encoding** — Reused `reqwest::Client` across geocoding and API stages with safe parameter encoding (`.query(...)`) to prevent HTTP overhead and URL injection risks.
 - **Transactional SQLite Persistence & Robust Client Management** — Atomic client profile management (`manage_client`) and reading deletions using explicit SQLite transactions (`conn.transaction()`), centralized table/index initialization (`create_tables`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
-- **Clean Type Abstractions & Safe Retries** — Refactored interactive wizard output to named type structs (`ReadingParams`), precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and full unit and integration test coverage across API, database, utilities, and stubbed domain modules.
+- **Clean Type Abstractions & Safe Retries** — Structured location resolution outputs (`LocationData`), refactored interactive wizard parameters (`ReadingParams`), HTML escaping sanitization layer (`escape_html`), precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and full unit and integration test coverage across API, database, geocoding, utilities, and stubbed domain modules.
 
 ---
 
@@ -59,8 +59,8 @@ src/
 ├── math.rs       # [STUBBED] Planetary position calculations and math engine tests
 ├── rules.rs      # [STUBBED] Vedic astrology rules engine and summary tests
 ├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator and engine tests
-├── geo.rs        # Geocoding + historical timezone resolution
-├── utils.rs      # Filename sanitization utilities and edge-case unit tests
+├── geo.rs        # Geocoding, historical timezone resolution, and LocationData abstractions
+├── utils.rs      # Filename sanitization and HTML escaping utilities with edge-case tests
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```
