@@ -698,13 +698,19 @@ async fn execute_reading_flow(
     println!("\nInitializing Astrology Workflow...");
 
     println!("Resolving Location and Historical Timezone for {}...", city);
-    let (lat, lon, offset) = match geo::get_location_data(&client, &city, naive_dt).await {
+    let loc_data = match geo::get_location_data(&client, &city, naive_dt).await {
         Ok(data) => data,
         Err(e) => {
             eprintln!("Location Resolution Error: {}", e);
             return;
         }
     };
+
+    let (lat, lon, offset) = (
+        loc_data.latitude,
+        loc_data.longitude,
+        loc_data.utc_offset_hours,
+    );
 
     let birth_data_summary = format!(
         "Date: {}, Time: {}, UTC Offset: {:.2}",
@@ -875,6 +881,9 @@ async fn execute_reading_flow(
         .await
         .unwrap_or_default();
 
+    let safe_name = utils::escape_html(&name);
+    let safe_reading = utils::escape_html(&final_reading);
+
     let html_content = format!(
         "<!DOCTYPE html>\n<html>\n<head>\n\
         <meta charset=\"UTF-8\">\n<title>Vedic Reading - {}</title>\n\
@@ -884,7 +893,7 @@ async fn execute_reading_flow(
         <h1>Vedic Reading for {}</h1>\n\
         <pre style=\"white-space: pre-wrap; font-family: inherit;\">{}</pre>\n\
         </body>\n</html>",
-        name, name, final_reading
+        safe_name, safe_name, safe_reading
     );
 
     let clean_name = utils::sanitize_filename(&name);
