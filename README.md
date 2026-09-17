@@ -17,10 +17,12 @@ This project demonstrates a high-performance system designed to orchestrate comp
 - **Multi-agent orchestration** — Agent 1 extracts structured parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data.
 - **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
+- **Robust UTF-8 Safe Date Parsing** — Zero-panic multi-window date extraction (`extract_target_date_from_text`) with strict `YYYY-MM-DD` pattern verification, gracefully handling conversational LLM responses and multi-byte UTF-8 character boundaries.
+- **Pure Timezone & Historical Offset Resolution** — Decoupled offline spatial timezone lookups (`tzf-rs`) and historical UTC offset resolution (`chrono-tz`) into testable pure functions (`resolve_timezone_and_offset`).
+- **Standardized HTML Report Generation** — Centralized HTML report builder (`generate_html_report`) with character escaping sanitization (`escape_html`) for secure document generation and browser opening via `open`.
 - **Zero-copy prompt pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
-- **HTTP Connection Pooling & Secure Encoding** — Reused `reqwest::Client` across geocoding and API stages with safe parameter encoding (`.query(...)`) to prevent HTTP overhead and URL injection risks.
 - **Transactional SQLite Persistence & Robust Client Management** — Atomic client profile management (`manage_client`) and reading deletions using explicit SQLite transactions (`conn.transaction()`), centralized table/index initialization (`create_tables`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
-- **Clean Type Abstractions & Safe Retries** — Structured location resolution outputs (`LocationData`), refactored interactive wizard parameters (`ReadingParams`), HTML escaping sanitization layer (`escape_html`), precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and full unit and integration test coverage across API, database, geocoding, utilities, and stubbed domain modules.
+- **Clean Type Abstractions & Refactored Wizard UX** — Structured location resolution outputs (`LocationData`), refactored interactive wizard parameters (`ReadingParams`), deduplicated prompt helpers (`prompt_target_words`), validated status selections, precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and test coverage across API, database, geocoding, utilities, and stubbed domain modules.
 
 ---
 
@@ -55,12 +57,12 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 src/
 ├── lib.rs        # Shared library exposing API, dasha, geo, math, rules, and utils
 ├── main.rs       # CLI/TUI, orchestration, DB layer, presentation, and DB tests
-├── api.rs        # Gemini API client, retry logic, backoff engine, and serialization tests
+├── api.rs        # Gemini API client, retry logic, UTF-8 safe date parsing, and backoff engine
 ├── math.rs       # [STUBBED] Planetary position calculations and math engine tests
 ├── rules.rs      # [STUBBED] Vedic astrology rules engine and summary tests
 ├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator and engine tests
-├── geo.rs        # Geocoding, historical timezone resolution, and LocationData abstractions
-├── utils.rs      # Filename sanitization and HTML escaping utilities with edge-case tests
+├── geo.rs        # Geocoding, pure historical timezone resolution, and LocationData abstractions
+├── utils.rs      # HTML report generation, filename sanitization, and escaping utilities with edge-case tests
 └── bin/
     └── verify_db.rs # Standalone DB inspection utility
 ```
