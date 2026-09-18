@@ -85,4 +85,11 @@ mod tests {
             "[CHART SUMMARY REDACTED — Proprietary rules engine]"
         );
     }
+
+    #[test]
+    fn test_neecha_bhanga_type_variants() {
+        assert_ne!(NeechaBhangaType::None, NeechaBhangaType::Standard);
+        assert_ne!(NeechaBhangaType::Standard, NeechaBhangaType::RajYoga);
+        assert_eq!(NeechaBhangaType::RajYoga, NeechaBhangaType::RajYoga.clone());
+    }
 }

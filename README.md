@@ -19,8 +19,9 @@ This project demonstrates a high-performance system designed to orchestrate comp
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
 - **Zero-copy prompt pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
 - **HTTP Connection Pooling & Secure Encoding** — Reused `reqwest::Client` across geocoding and API stages with safe parameter encoding (`.query(...)`) to prevent HTTP overhead and URL injection risks.
-- **Transactional SQLite Persistence & Robust Client Management** — Atomic client profile management (`manage_client`) and reading deletions using explicit SQLite transactions (`conn.transaction()`), centralized table/index initialization (`create_tables`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
-- **Clean Type Abstractions & Safe Retries** — Structured location resolution outputs (`LocationData`), refactored interactive wizard parameters (`ReadingParams`), HTML escaping sanitization layer (`escape_html`), precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and full unit and integration test coverage across API, database, geocoding, utilities, and stubbed domain modules.
+- **Transactional SQLite Persistence & Safe Schema Migrations** — Atomic client profile management (`manage_client`) and reading deletions using explicit SQLite transactions (`conn.transaction()`), centralized table/index initialization (`create_tables`), PRAGMA-driven schema migration checks (`ensure_client_columns`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Graceful Diagnostics & DB Inspection** — User-friendly standalone inspection utility (`bin/verify_db.rs`) that checks for database existence before execution.
+- **Clean Type Abstractions & Safe Retries** — Structured location resolution outputs (`LocationData`), refactored interactive wizard parameters (`ReadingParams`), HTML escaping sanitization layer (`escape_html`), precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and expanded unit and integration test coverage (24 test cases) across API rate limits, database migrations, offline `tzf-rs` timezone resolution, utilities, and stubbed domain modules.
 
 ---
 
@@ -54,15 +55,15 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 ```
 src/
 ├── lib.rs        # Shared library exposing API, dasha, geo, math, rules, and utils
-├── main.rs       # CLI/TUI, orchestration, DB layer, presentation, and DB tests
+├── main.rs       # CLI/TUI, orchestration, DB layer, migration routines, presentation, and DB tests
 ├── api.rs        # Gemini API client, retry logic, backoff engine, and serialization tests
-├── math.rs       # [STUBBED] Planetary position calculations and math engine tests
-├── rules.rs      # [STUBBED] Vedic astrology rules engine and summary tests
+├── math.rs       # [STUBBED] Planetary position calculations, house systems, and math tests
+├── rules.rs      # [STUBBED] Vedic astrology rules engine, Neecha Bhanga types, and summary tests
 ├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator and engine tests
-├── geo.rs        # Geocoding, historical timezone resolution, and LocationData abstractions
+├── geo.rs        # Geocoding, offline tzf-rs lookup, historical timezone offset, and geo tests
 ├── utils.rs      # Filename sanitization and HTML escaping utilities with edge-case tests
 └── bin/
-    └── verify_db.rs # Standalone DB inspection utility
+    └── verify_db.rs # Standalone DB inspection utility with graceful database detection
 ```
 
 ---

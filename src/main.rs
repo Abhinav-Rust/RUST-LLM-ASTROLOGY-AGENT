@@ -44,11 +44,25 @@ fn create_tables(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn ensure_client_columns(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(Clients)")?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if !columns.iter().any(|c| c == "dob") {
+        conn.execute("ALTER TABLE Clients ADD COLUMN dob TEXT", [])?;
+    }
+    if !columns.iter().any(|c| c == "time") {
+        conn.execute("ALTER TABLE Clients ADD COLUMN time TEXT", [])?;
+    }
+    Ok(())
+}
+
 fn init_db() -> Result<Connection> {
     let conn = Connection::open("astrology_journal.db")?;
     create_tables(&conn)?;
-    let _ = conn.execute("ALTER TABLE Clients ADD COLUMN dob TEXT", []);
-    let _ = conn.execute("ALTER TABLE Clients ADD COLUMN time TEXT", []);
+    ensure_client_columns(&conn)?;
     Ok(conn)
 }
 
@@ -115,6 +129,54 @@ mod tests {
         let conn = Connection::open_in_memory()?;
         create_tables(&conn)?;
         Ok(conn)
+    }
+
+    #[test]
+    fn test_init_db_and_migration_idempotency() -> Result<()> {
+        let conn = init_test_db()?;
+        // Calling ensure_client_columns multiple times must be idempotent and succeed
+        ensure_client_columns(&conn)?;
+        ensure_client_columns(&conn)?;
+
+        let mut stmt = conn.prepare("PRAGMA table_info(Clients)")?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert!(columns.contains(&"id".to_string()));
+        assert!(columns.contains(&"name".to_string()));
+        assert!(columns.contains(&"city".to_string()));
+        assert!(columns.contains(&"status".to_string()));
+        assert!(columns.contains(&"dob".to_string()));
+        assert!(columns.contains(&"time".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_client_record_mapping() -> Result<()> {
+        let mut conn = init_test_db()?;
+        let (id, status) = manage_client(
+            &mut conn,
+            "Test Client",
+            "Paris",
+            "01/01/2000",
+            "12:00",
+            "Summary",
+        )?;
+
+        let mut stmt =
+            conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE id = ?")?;
+        let record = stmt.query_row(params![id], ClientRecord::from_row)?;
+
+        assert_eq!(record.id, id);
+        assert_eq!(record.name, "Test Client");
+        assert_eq!(record.city, "Paris");
+        assert_eq!(record.status, status);
+        assert_eq!(record.dob, Some("01/01/2000".to_string()));
+        assert_eq!(record.time, Some("12:00".to_string()));
+
+        Ok(())
     }
 
     #[test]
@@ -762,7 +824,6 @@ async fn execute_reading_flow(
 
     let selected_house_system = match house_selection {
         0 => math::HouseSystem::Placidus,
-        1 => math::HouseSystem::WholeSign,
         _ => math::HouseSystem::WholeSign,
     };
 
@@ -784,8 +845,7 @@ async fn execute_reading_flow(
                     .planets
                     .iter()
                     .find(|p| p.name == "Moon")
-                    .map(|p| p.longitude)
-                    .unwrap_or(0.0);
+                    .map_or(0.0, |p| p.longitude);
                 let expert_data = rules::process(&astro_data);
                 let parivartan = math::detect_parivartan_yogas(&astro_data.planets);
                 (rules::format_summary(&expert_data), moon_lon, parivartan)

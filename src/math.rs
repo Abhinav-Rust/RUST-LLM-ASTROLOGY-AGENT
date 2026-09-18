@@ -113,6 +113,34 @@ mod tests {
     }
 
     #[test]
+    fn test_house_system_defaults_and_enum_variants() {
+        assert_eq!(HouseSystem::default(), HouseSystem::WholeSign);
+
+        let details_placidus = BirthDetails {
+            date: "01/01/2000".to_string(),
+            time: "12:00".to_string(),
+            latitude: 0.0,
+            longitude: 0.0,
+            timezone: 0.0,
+            system: System::KP,
+            house_system: HouseSystem::Placidus,
+        };
+        assert_eq!(details_placidus.system, System::KP);
+        assert_eq!(details_placidus.house_system, HouseSystem::Placidus);
+
+        let details_sripati = BirthDetails {
+            date: "01/01/2000".to_string(),
+            time: "12:00".to_string(),
+            latitude: 0.0,
+            longitude: 0.0,
+            timezone: 0.0,
+            system: System::Vedic,
+            house_system: HouseSystem::SriPati,
+        };
+        assert_eq!(details_sripati.house_system, HouseSystem::SriPati);
+    }
+
+    #[test]
     fn test_detect_parivartan_yogas_stub() {
         let planets = vec![PlanetData {
             name: "Sun".to_string(),
