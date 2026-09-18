@@ -84,6 +84,7 @@ pub async fn get_location_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::NaiveDate;
 
     #[test]
     fn test_location_data_struct() {
@@ -95,5 +96,46 @@ mod tests {
         assert_eq!(loc.latitude, 51.5074);
         assert_eq!(loc.longitude, -0.1278);
         assert_eq!(loc.utc_offset_hours, 1.0);
+    }
+
+    #[test]
+    fn test_timezone_finder_lookups() {
+        // London
+        assert_eq!(FINDER.get_tz_name(-0.1278, 51.5074), "Europe/London");
+        // Tokyo
+        assert_eq!(FINDER.get_tz_name(139.6917, 35.6895), "Asia/Tokyo");
+        // New York
+        assert_eq!(FINDER.get_tz_name(-74.0060, 40.7128), "America/New_York");
+    }
+
+    #[test]
+    fn test_historical_timezone_offset_calculation() {
+        let tz: Tz = "Europe/London".parse().unwrap();
+        let winter_dt = NaiveDate::from_ymd_opt(2025, 1, 1)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
+        let summer_dt = NaiveDate::from_ymd_opt(2025, 7, 1)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
+
+        let winter_offset = tz
+            .from_local_datetime(&winter_dt)
+            .earliest()
+            .unwrap()
+            .offset()
+            .fix()
+            .local_minus_utc();
+        let summer_offset = tz
+            .from_local_datetime(&summer_dt)
+            .earliest()
+            .unwrap()
+            .offset()
+            .fix()
+            .local_minus_utc();
+
+        assert_eq!(winter_offset, 0); // London Winter UTC+0
+        assert_eq!(summer_offset, 3600); // London Summer BST UTC+1
     }
 }

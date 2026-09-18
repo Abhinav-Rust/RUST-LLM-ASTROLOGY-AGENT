@@ -1,7 +1,17 @@
 use rusqlite::{Connection, Result};
+use std::path::Path;
 
 fn main() -> Result<()> {
-    let conn = Connection::open("astrology_journal.db")?;
+    let db_path = "astrology_journal.db";
+    if !Path::new(db_path).exists() {
+        println!(
+            "Database '{}' does not exist yet. Please run the application first to initialize the database.",
+            db_path
+        );
+        return Ok(());
+    }
+
+    let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare("SELECT name, status FROM Clients")?;
     let clients = stmt.query_map([], |row| {
         Ok(format!(

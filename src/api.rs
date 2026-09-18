@@ -386,6 +386,14 @@ mod tests {
             Some(10.0)
         );
         assert_eq!(
+            parse_retry_seconds_from_message("PLEASE RETRY IN 45S IMMEDIATELY"),
+            Some(45.0)
+        );
+        assert_eq!(
+            parse_retry_seconds_from_message("retry after 2.5 seconds"),
+            Some(2.5)
+        );
+        assert_eq!(
             parse_retry_seconds_from_message("Random error message with no retry info"),
             None
         );
@@ -394,7 +402,9 @@ mod tests {
     #[test]
     fn test_fallback_date() {
         assert_eq!(fallback_date("2025-05-10"), "2026-05-10");
+        assert_eq!(fallback_date("2024-02-29"), "2030-01-01"); // Leap year non-leap date fallback
         assert_eq!(fallback_date("invalid-date"), "2030-01-01");
+        assert_eq!(fallback_date(""), "2030-01-01");
     }
 
     #[test]
