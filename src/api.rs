@@ -332,6 +332,30 @@ pub async fn call_gemini_with_retry(
     unreachable!()
 }
 
+pub fn extract_target_date_from_text(text: &str, current_date: &str) -> String {
+    let trimmed = text.trim();
+
+    let chars: Vec<char> = trimmed.chars().collect();
+    if chars.len() >= 10 {
+        for window in chars.windows(10) {
+            let candidate: String = window.iter().collect();
+            let bytes = candidate.as_bytes();
+            let is_strict_pattern = bytes.len() == 10
+                && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+                && bytes[4] == b'-'
+                && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+                && bytes[7] == b'-'
+                && bytes[8..10].iter().all(|b| b.is_ascii_digit());
+
+            if is_strict_pattern && NaiveDate::parse_from_str(&candidate, "%Y-%m-%d").is_ok() {
+                return candidate;
+            }
+        }
+    }
+
+    fallback_date(current_date)
+}
+
 pub async fn extract_target_date(client: &Client, question: &str, current_date: &str) -> String {
     // [PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY]
     let system_prompt = "[PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY] Extract a target date in YYYY-MM-DD format.";
@@ -346,13 +370,7 @@ pub async fn extract_target_date(client: &Client, question: &str, current_date: 
     )
     .await
     {
-        Ok(text) => {
-            let text = text.trim();
-            if text.len() >= 10 && text.contains("-") {
-                return text[..10].to_string();
-            }
-            fallback_date(current_date)
-        }
+        Ok(text) => extract_target_date_from_text(&text, current_date),
         Err(_) => fallback_date(current_date),
     }
 }
@@ -388,6 +406,26 @@ mod tests {
         assert_eq!(
             parse_retry_seconds_from_message("Random error message with no retry info"),
             None
+        );
+    }
+
+    #[test]
+    fn test_extract_target_date_from_text() {
+        assert_eq!(
+            extract_target_date_from_text("2026-08-15", "2025-01-01"),
+            "2026-08-15"
+        );
+        assert_eq!(
+            extract_target_date_from_text("The target date is 2026-08-15.", "2025-01-01"),
+            "2026-08-15"
+        );
+        assert_eq!(
+            extract_target_date_from_text("🎉 Target: 2027-11-20 🎉", "2025-01-01"),
+            "2027-11-20"
+        );
+        assert_eq!(
+            extract_target_date_from_text("Invalid date string", "2025-05-10"),
+            "2026-05-10"
         );
     }
 

@@ -431,15 +431,19 @@ fn edit_client(conn: &Connection) -> Result<()> {
             println!("Client City updated successfully.");
         }
         2 => {
-            let new_status: String = Input::new()
-                .with_prompt("Enter new Status (Active/Refused)")
-                .interact_text()
+            let status_options = &["Active", "Refused"];
+            let status_selection = Select::new()
+                .with_prompt("Select new Status")
+                .items(status_options)
+                .default(0)
+                .interact()
                 .unwrap();
+            let new_status = status_options[status_selection];
             conn.execute(
                 "UPDATE Clients SET status = ? WHERE id = ?",
                 params![new_status, id],
             )?;
-            println!("Client Status updated successfully.");
+            println!("Client Status updated to '{}' successfully.", new_status);
         }
         _ => unreachable!(),
     }
@@ -539,11 +543,7 @@ fn launch_wizard() -> ReadingParams {
         .interact_text()
         .unwrap();
 
-    let words_str: String = Input::new()
-        .with_prompt("Enter desired reading length in words (e.g., 500)")
-        .interact_text()
-        .unwrap();
-    let target_words: u32 = words_str.parse().unwrap_or(500);
+    let target_words = prompt_target_words();
 
     ReadingParams {
         name,
@@ -553,6 +553,14 @@ fn launch_wizard() -> ReadingParams {
         question,
         target_words,
     }
+}
+
+fn prompt_target_words() -> u32 {
+    let words_str: String = Input::new()
+        .with_prompt("Enter desired reading length in words (e.g., 500)")
+        .interact_text()
+        .unwrap();
+    words_str.parse().unwrap_or(500)
 }
 
 fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
@@ -638,11 +646,7 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
             .interact_text()
             .unwrap();
 
-        let words_str: String = Input::new()
-            .with_prompt("Enter desired reading length in words (e.g., 500)")
-            .interact_text()
-            .unwrap();
-        let target_words: u32 = words_str.parse().unwrap_or(500);
+        let target_words = prompt_target_words();
 
         Ok(Some(ReadingParams {
             name: client.name,
@@ -881,20 +885,7 @@ async fn execute_reading_flow(
         .await
         .unwrap_or_default();
 
-    let safe_name = utils::escape_html(&name);
-    let safe_reading = utils::escape_html(&final_reading);
-
-    let html_content = format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n\
-        <meta charset=\"UTF-8\">\n<title>Vedic Reading - {}</title>\n\
-        <style>\n\
-        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.8; color: #333; padding: 20px; background-color: #fcfcfc; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}\n\
-        </style>\n</head>\n<body>\n\
-        <h1>Vedic Reading for {}</h1>\n\
-        <pre style=\"white-space: pre-wrap; font-family: inherit;\">{}</pre>\n\
-        </body>\n</html>",
-        safe_name, safe_name, safe_reading
-    );
+    let html_content = utils::generate_html_report(&name, &final_reading);
 
     let clean_name = utils::sanitize_filename(&name);
     let date_suffix = chrono::Local::now().format("%Y%m%d_%H%M%S");
