@@ -30,9 +30,34 @@ pub fn escape_html(input: &str) -> String {
     result
 }
 
+pub fn generate_html_report(name: &str, reading: &str) -> String {
+    let safe_name = escape_html(name);
+    let safe_reading = escape_html(reading);
+
+    format!(
+        "<!DOCTYPE html>\n<html>\n<head>\n\
+        <meta charset=\"UTF-8\">\n<title>Vedic Reading - {}</title>\n\
+        <style>\n\
+        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.8; color: #333; padding: 20px; background-color: #fcfcfc; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}\n\
+        </style>\n</head>\n<body>\n\
+        <h1>Vedic Reading for {}</h1>\n\
+        <pre style=\"white-space: pre-wrap; font-family: inherit;\">{}</pre>\n\
+        </body>\n</html>",
+        safe_name, safe_name, safe_reading
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_generate_html_report() {
+        let html = generate_html_report("John <Doe>", "Line 1\nLine 2 & 'more'");
+        assert!(html.contains("<title>Vedic Reading - John &lt;Doe&gt;</title>"));
+        assert!(html.contains("<h1>Vedic Reading for John &lt;Doe&gt;</h1>"));
+        assert!(html.contains("Line 1\nLine 2 &amp; &#39;more&#39;"));
+    }
 
     #[test]
     fn test_sanitize_filename() {

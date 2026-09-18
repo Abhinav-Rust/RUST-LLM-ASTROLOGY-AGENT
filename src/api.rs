@@ -332,6 +332,31 @@ pub async fn call_gemini_with_retry(
     unreachable!()
 }
 
+pub fn extract_target_date_from_text(text: &str) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() < 10 {
+        return None;
+    }
+    for window in chars.windows(10) {
+        if window[4] == '-'
+            && window[7] == '-'
+            && window.iter().enumerate().all(|(i, &c)| {
+                if i == 4 || i == 7 {
+                    c == '-'
+                } else {
+                    c.is_ascii_digit()
+                }
+            })
+        {
+            let candidate: String = window.iter().collect();
+            if NaiveDate::parse_from_str(&candidate, "%Y-%m-%d").is_ok() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
 pub async fn extract_target_date(client: &Client, question: &str, current_date: &str) -> String {
     // [PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY]
     let system_prompt = "[PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY] Extract a target date in YYYY-MM-DD format.";
@@ -347,11 +372,7 @@ pub async fn extract_target_date(client: &Client, question: &str, current_date: 
     .await
     {
         Ok(text) => {
-            let text = text.trim();
-            if text.len() >= 10 && text.contains("-") {
-                return text[..10].to_string();
-            }
-            fallback_date(current_date)
+            extract_target_date_from_text(&text).unwrap_or_else(|| fallback_date(current_date))
         }
         Err(_) => fallback_date(current_date),
     }
@@ -370,6 +391,23 @@ fn fallback_date(current_date: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_target_date_from_text() {
+        assert_eq!(
+            extract_target_date_from_text("Target date is 2026-05-15."),
+            Some("2026-05-15".to_string())
+        );
+        assert_eq!(
+            extract_target_date_from_text("🌟 Target: 2027-11-20 🌟"),
+            Some("2027-11-20".to_string())
+        );
+        assert_eq!(
+            extract_target_date_from_text("Invalid date 2025-99-99"),
+            None
+        );
+        assert_eq!(extract_target_date_from_text("No date here"), None);
+    }
 
     #[test]
     fn test_parse_retry_seconds_from_message() {
