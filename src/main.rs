@@ -881,20 +881,7 @@ async fn execute_reading_flow(
         .await
         .unwrap_or_default();
 
-    let safe_name = utils::escape_html(&name);
-    let safe_reading = utils::escape_html(&final_reading);
-
-    let html_content = format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n\
-        <meta charset=\"UTF-8\">\n<title>Vedic Reading - {}</title>\n\
-        <style>\n\
-        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.8; color: #333; padding: 20px; background-color: #fcfcfc; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}\n\
-        </style>\n</head>\n<body>\n\
-        <h1>Vedic Reading for {}</h1>\n\
-        <pre style=\"white-space: pre-wrap; font-family: inherit;\">{}</pre>\n\
-        </body>\n</html>",
-        safe_name, safe_name, safe_reading
-    );
+    let html_content = utils::generate_html_report(&name, &final_reading);
 
     let clean_name = utils::sanitize_filename(&name);
     let date_suffix = chrono::Local::now().format("%Y%m%d_%H%M%S");

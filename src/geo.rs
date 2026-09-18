@@ -20,6 +20,31 @@ pub struct LocationData {
     pub utc_offset_hours: f64,
 }
 
+pub fn resolve_timezone_and_offset(
+    lat: f64,
+    lon: f64,
+    naive_dt: NaiveDateTime,
+) -> Result<(String, f64), String> {
+    // tzf-rs takes (longitude, latitude)
+    let tz_name = FINDER.get_tz_name(lon, lat).to_string();
+
+    let tz: Tz = tz_name
+        .parse()
+        .map_err(|_| format!("Unsupported timezone: {}", tz_name))?;
+
+    let dt = tz
+        .from_local_datetime(&naive_dt)
+        .earliest()
+        .ok_or_else(|| {
+            "The provided local time is non-existent due to a DST transition.".to_string()
+        })?;
+
+    let offset_seconds = dt.offset().fix().local_minus_utc();
+    let offset_hours = offset_seconds as f64 / 3600.0;
+
+    Ok((tz_name, offset_hours))
+}
+
 pub async fn get_location_data(
     client: &Client,
     city: &str,
@@ -51,27 +76,11 @@ pub async fn get_location_data(
         .parse()
         .map_err(|_| "Invalid longitude from API")?;
 
-    // tzf-rs takes (longitude, latitude)
-    let tz_name = FINDER.get_tz_name(lon, lat);
-
     println!("Resolved Location: {} -> ({}, {})", city, lat, lon);
+
+    let (tz_name, offset_hours) = resolve_timezone_and_offset(lat, lon, naive_dt)?;
+
     println!("Resolved Timezone: {}", tz_name);
-
-    let tz: Tz = tz_name
-        .parse()
-        .map_err(|_| format!("Unsupported timezone: {}", tz_name))?;
-
-    // Get historical UTC offset
-    let dt = tz
-        .from_local_datetime(&naive_dt)
-        .earliest()
-        .ok_or_else(|| {
-            "The provided local time is non-existent due to a DST transition.".to_string()
-        })?;
-
-    let offset_seconds = dt.offset().fix().local_minus_utc();
-    let offset_hours = offset_seconds as f64 / 3600.0;
-
     println!("Historical UTC Offset: {:.2} hours", offset_hours);
 
     Ok(LocationData {
@@ -84,6 +93,26 @@ pub async fn get_location_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn test_resolve_timezone_and_offset() {
+        let naive_dt = NaiveDate::from_ymd_opt(1990, 8, 15)
+            .unwrap()
+            .and_hms_opt(10, 45, 0)
+            .unwrap();
+
+        // London (51.5074, -0.1278) -> Europe/London (BST = UTC+1 in August)
+        let (tz, offset) = resolve_timezone_and_offset(51.5074, -0.1278, naive_dt).unwrap();
+        assert_eq!(tz, "Europe/London");
+        assert_eq!(offset, 1.0);
+
+        // Tokyo (35.6762, 139.6503) -> Asia/Tokyo (JST = UTC+9)
+        let (tz_tokyo, offset_tokyo) =
+            resolve_timezone_and_offset(35.6762, 139.6503, naive_dt).unwrap();
+        assert_eq!(tz_tokyo, "Asia/Tokyo");
+        assert_eq!(offset_tokyo, 9.0);
+    }
 
     #[test]
     fn test_location_data_struct() {
