@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{NaiveDate, NaiveDateTime};
 use console::style;
 use dialoguer::{Confirm, Input, Select};
 use rusqlite::{Connection, OptionalExtension, Result, params};
@@ -44,11 +44,25 @@ fn create_tables(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn ensure_client_columns(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(Clients)")?;
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if !columns.contains(&"dob".to_string()) {
+        conn.execute("ALTER TABLE Clients ADD COLUMN dob TEXT", [])?;
+    }
+    if !columns.contains(&"time".to_string()) {
+        conn.execute("ALTER TABLE Clients ADD COLUMN time TEXT", [])?;
+    }
+    Ok(())
+}
+
 fn init_db() -> Result<Connection> {
     let conn = Connection::open("astrology_journal.db")?;
     create_tables(&conn)?;
-    let _ = conn.execute("ALTER TABLE Clients ADD COLUMN dob TEXT", []);
-    let _ = conn.execute("ALTER TABLE Clients ADD COLUMN time TEXT", []);
+    ensure_client_columns(&conn)?;
     Ok(conn)
 }
 
@@ -301,6 +315,37 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_ensure_client_columns_legacy_schema() -> Result<()> {
+        let conn = Connection::open_in_memory()?;
+        // Create legacy schema without dob and time
+        conn.execute(
+            "CREATE TABLE Clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                city TEXT NOT NULL,
+                birth_data TEXT NOT NULL,
+                status TEXT NOT NULL
+            )",
+            (),
+        )?;
+
+        ensure_client_columns(&conn)?;
+
+        let mut stmt = conn.prepare("PRAGMA table_info(Clients)")?;
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert!(columns.contains(&"dob".to_string()));
+        assert!(columns.contains(&"time".to_string()));
+
+        // Calling it again should be idempotent and not error out
+        assert!(ensure_client_columns(&conn).is_ok());
+
+        Ok(())
+    }
 }
 
 fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &str) -> Result<()> {
@@ -503,15 +548,16 @@ fn launch_wizard() -> ReadingParams {
 
     let date: String = loop {
         let input: String = Input::new()
-            .with_prompt("Enter Date of Birth (DD/MM/YYYY)")
+            .with_prompt("Enter Date of Birth (e.g., 15/08/1990 or 1990-08-15)")
             .interact_text()
             .unwrap();
-        if NaiveDate::parse_from_str(&input, "%d/%m/%Y").is_ok() {
+        if utils::parse_flexible_date(&input).is_some() {
             break input;
         }
         println!(
             "{}",
-            style("Invalid date format. Please use DD/MM/YYYY (e.g., 15/08/1990).").red()
+            style("Invalid date format. Please use DD/MM/YYYY or YYYY-MM-DD (e.g., 15/08/1990).")
+                .red()
         );
     };
 
@@ -520,9 +566,7 @@ fn launch_wizard() -> ReadingParams {
             .with_prompt("Enter Time of Birth (e.g., 10:45 AM or 14:30)")
             .interact_text()
             .unwrap();
-        if NaiveTime::parse_from_str(&input, "%I:%M %p").is_ok()
-            || NaiveTime::parse_from_str(&input, "%H:%M").is_ok()
-        {
+        if utils::parse_flexible_time(&input).is_some() {
             break input;
         }
         println!(
@@ -681,19 +725,17 @@ async fn execute_reading_flow(
         .expect("Network Initialization Error");
 
     // Prepare NaiveDateTime for location/offset resolution
-    let date = match NaiveDate::parse_from_str(&date_str, "%d/%m/%Y") {
-        Ok(d) => d,
-        Err(_) => {
-            eprintln!("Invalid Date Format. Please use DD/MM/YYYY");
+    let date = match utils::parse_flexible_date(&date_str) {
+        Some(d) => d,
+        None => {
+            eprintln!("Invalid Date Format. Please use DD/MM/YYYY or YYYY-MM-DD.");
             return;
         }
     };
-    let time = match NaiveTime::parse_from_str(&time_str, "%I:%M %p")
-        .or_else(|_| NaiveTime::parse_from_str(&time_str, "%H:%M"))
-    {
-        Ok(t) => t,
-        Err(_) => {
-            eprintln!("Invalid Time Format. Please use HH:MM AM/PM or HH:MM");
+    let time = match utils::parse_flexible_time(&time_str) {
+        Some(t) => t,
+        None => {
+            eprintln!("Invalid Time Format. Please use HH:MM AM/PM or HH:MM.");
             return;
         }
     };
