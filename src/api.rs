@@ -248,6 +248,13 @@ pub async fn call_gemini_with_retry(
         .trim()
         .trim_matches('"')
         .to_string();
+
+    if api_key.is_empty() {
+        return Err(GeminiError::ServerError(
+            "GEMINI_API_KEY environment variable is not set or empty".to_string(),
+        ));
+    }
+
     let combined_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
 
     let request_body = GeminiRequest {
@@ -501,6 +508,38 @@ mod tests {
         assert_eq!(usage.prompt_token_count, Some(100));
         assert_eq!(usage.candidates_token_count, Some(200));
         assert_eq!(usage.total_token_count, Some(300));
+    }
+
+    #[tokio::test]
+    async fn test_call_gemini_missing_api_key() {
+        let client = Client::new();
+        let original_key = env::var("GEMINI_API_KEY").ok();
+        unsafe {
+            env::remove_var("GEMINI_API_KEY");
+        }
+
+        let res = call_gemini_with_retry(
+            &client,
+            "system".to_string(),
+            "user".to_string(),
+            "gemini-3.1-flash-lite",
+            100,
+        )
+        .await;
+
+        if let Some(key) = original_key {
+            unsafe {
+                env::set_var("GEMINI_API_KEY", key);
+            }
+        }
+
+        assert!(res.is_err());
+        match res.unwrap_err() {
+            GeminiError::ServerError(msg) => {
+                assert!(msg.contains("GEMINI_API_KEY environment variable is not set or empty"));
+            }
+            other => panic!("Expected ServerError for missing API key, got {:?}", other),
+        }
     }
 
     #[test]
