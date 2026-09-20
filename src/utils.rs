@@ -1,3 +1,36 @@
+use chrono::{NaiveDate, NaiveTime};
+
+pub fn parse_flexible_date(input: &str) -> Option<NaiveDate> {
+    let trimmed = input.trim();
+    let formats = ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y", "%d.%m.%Y"];
+
+    for fmt in &formats {
+        if let Ok(date) = NaiveDate::parse_from_str(trimmed, fmt) {
+            return Some(date);
+        }
+    }
+    None
+}
+
+pub fn parse_flexible_time(input: &str) -> Option<NaiveTime> {
+    let trimmed = input.trim();
+    let formats = [
+        "%I:%M %p",
+        "%I:%M%p",
+        "%I:%M:%S %p",
+        "%I:%M:%S%p",
+        "%H:%M",
+        "%H:%M:%S",
+    ];
+
+    for fmt in &formats {
+        if let Ok(time) = NaiveTime::parse_from_str(trimmed, fmt) {
+            return Some(time);
+        }
+    }
+    None
+}
+
 pub fn sanitize_filename(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
     let mut last_was_underscore = false;
@@ -80,5 +113,51 @@ mod tests {
         assert!(html.contains("<title>Vedic Reading - Jane &amp; John &lt;Doe&gt;</title>"));
         assert!(html.contains("<h1>Vedic Reading for Jane &amp; John &lt;Doe&gt;</h1>"));
         assert!(html.contains("Line 1\nLine 2 &amp; &lt;More&gt;"));
+    }
+
+    #[test]
+    fn test_parse_flexible_date() {
+        assert_eq!(
+            parse_flexible_date("15/08/1990"),
+            NaiveDate::from_ymd_opt(1990, 8, 15)
+        );
+        assert_eq!(
+            parse_flexible_date("1990-08-15"),
+            NaiveDate::from_ymd_opt(1990, 8, 15)
+        );
+        assert_eq!(
+            parse_flexible_date("15-08-1990"),
+            NaiveDate::from_ymd_opt(1990, 8, 15)
+        );
+        assert_eq!(
+            parse_flexible_date("08/15/1990"),
+            NaiveDate::from_ymd_opt(1990, 8, 15)
+        );
+        assert_eq!(
+            parse_flexible_date("15.08.1990"),
+            NaiveDate::from_ymd_opt(1990, 8, 15)
+        );
+        assert_eq!(parse_flexible_date("invalid date"), None);
+    }
+
+    #[test]
+    fn test_parse_flexible_time() {
+        assert_eq!(
+            parse_flexible_time("10:45 AM"),
+            NaiveTime::from_hms_opt(10, 45, 0)
+        );
+        assert_eq!(
+            parse_flexible_time("10:45AM"),
+            NaiveTime::from_hms_opt(10, 45, 0)
+        );
+        assert_eq!(
+            parse_flexible_time("14:30"),
+            NaiveTime::from_hms_opt(14, 30, 0)
+        );
+        assert_eq!(
+            parse_flexible_time("14:30:15"),
+            NaiveTime::from_hms_opt(14, 30, 15)
+        );
+        assert_eq!(parse_flexible_time("invalid time"), None);
     }
 }
