@@ -125,7 +125,7 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(1990, 8, 15).unwrap())
         );
         assert_eq!(
-            parse_flexible_date("1990-08-15"),
+            parse_flexible_date("  1990-08-15  "),
             Some(NaiveDate::from_ymd_opt(1990, 8, 15).unwrap())
         );
         assert_eq!(

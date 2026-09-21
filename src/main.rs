@@ -87,8 +87,8 @@ fn manage_client(
     let res = match client_opt {
         Some((id, status)) => {
             tx.execute(
-                "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
-                params![dob, time, id],
+                "UPDATE Clients SET city = ?, birth_data = ?, dob = ?, time = ? WHERE id = ?",
+                params![city, birth_data, dob, time, id],
             )?;
             println!(
                 "{}",
@@ -147,17 +147,22 @@ mod tests {
         assert_eq!(id1, 1);
         assert_eq!(status1, "Active");
 
-        // Repeat client check
+        // Repeat client check with updated city & birth_data
         let (id2, status2) = manage_client(
             &mut conn,
             "John Doe",
-            "London",
+            "Manchester",
             "15/08/1990",
             "10:45 AM",
-            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 1.00",
+            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 0.00",
         )?;
         assert_eq!(id2, 1);
         assert_eq!(status2, "Active");
+
+        // Verify city was updated in database
+        let mut stmt = conn.prepare("SELECT city FROM Clients WHERE id = ?")?;
+        let city: String = stmt.query_row(params![id2], |r| r.get(0))?;
+        assert_eq!(city, "Manchester");
 
         Ok(())
     }
@@ -930,8 +935,13 @@ async fn execute_reading_flow(
     let html_content = utils::generate_html_report(&name, &final_reading);
 
     let clean_name = utils::sanitize_filename(&name);
+    let safe_clean_name = if clean_name.is_empty() {
+        "client".to_string()
+    } else {
+        clean_name
+    };
     let date_suffix = chrono::Local::now().format("%Y%m%d_%H%M%S");
-    let filename = format!("{}_{}.html", clean_name, date_suffix);
+    let filename = format!("{}_{}.html", safe_clean_name, date_suffix);
 
     let mut absolute_path = std::env::current_dir().unwrap();
     absolute_path.push("readings");
