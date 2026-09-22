@@ -77,6 +77,7 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         .content {{ background: var(--card-bg); padding: 36px; border-radius: 0 0 12px 12px; border: 1px solid var(--border); border-top: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }}\n\
         pre {{ white-space: pre-wrap; word-wrap: break-word; font-family: inherit; font-size: 16px; margin: 0; color: var(--text); }}\n\
         .footer {{ text-align: center; margin-top: 24px; font-size: 13px; color: #94a3b8; }}\n\
+        @media (max-width: 640px) {{ body {{ padding: 12px; margin: 10px auto; }} .header, .content {{ padding: 20px; }} }}\n\
         </style>\n</head>\n<body>\n\
         <div class=\"header\">\n\
         <h1>Vedic Astrological Analysis</h1>\n\

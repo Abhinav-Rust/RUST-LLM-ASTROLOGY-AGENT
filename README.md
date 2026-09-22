@@ -19,12 +19,12 @@ This project demonstrates a high-performance system designed to orchestrate comp
 - **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
 - **Robust UTF-8 Safe & Flexible Date/Time Parsing** — Zero-panic multi-window date extraction (`extract_target_date_from_text`) with strict `YYYY-MM-DD` pattern verification and flexible date/time parser utilities (`parse_flexible_date`, `parse_flexible_time`) supporting `DD/MM/YYYY`, `YYYY-MM-DD`, `DD-MM-YYYY`, `MM/DD/YYYY`, 12-hour AM/PM, and 24-hour time inputs.
 - **Pure Timezone & Historical Offset Resolution** — Decoupled offline spatial timezone lookups (`tzf-rs`) and historical UTC offset resolution (`chrono-tz`) into testable pure functions (`resolve_timezone_and_offset`).
-- **Modern Responsive HTML Report Generation** — Centralized HTML report builder (`generate_html_report`) with character escaping sanitization (`escape_html`), responsive card layouts, dark header gradients, generation timestamp metadata, and auto-opening via `open`.
+- **Modern Responsive HTML Report Generation** — Centralized HTML report builder (`generate_html_report`) with character escaping sanitization (`escape_html`), responsive card layouts, dark header gradients, mobile breakpoint media queries, generation timestamp metadata, and auto-opening via `open`.
 - **Zero-copy prompt pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
-- **Transactional SQLite Persistence & Dynamic Schema Migrations** — Atomic client profile management (`manage_client`) and reading deletions using explicit SQLite transactions (`conn.transaction()`), dynamic column migrations via `PRAGMA table_info` (`ensure_client_columns`), centralized table/index initialization (`create_tables`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Transactional SQLite Persistence & Dynamic Schema Migrations** — Atomic client profile management (`manage_client`) updating city, birth data, DOB, and time for repeat clients alongside reading deletions using explicit SQLite transactions (`conn.transaction()`), dynamic column migrations via `PRAGMA table_info` (`ensure_client_columns`), centralized table/index initialization (`create_tables`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
 - **API Key Validation & Resilient Execution** — Early env validation for `GEMINI_API_KEY` returning structured `GeminiError::ServerError` before making HTTP calls.
-- **Enhanced Database Verification Utility** — Modernized standalone DB inspector (`verify_db`) displaying summary client/reading counts, formatted tabular client profiles, and chronological reading history logs.
-- **Clean Type Abstractions & Refactored Wizard UX** — Structured location resolution outputs (`LocationData`), refactored interactive wizard parameters (`ReadingParams`), deduplicated prompt helpers (`prompt_target_words`), validated status selections, precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and test coverage across API, database, geocoding, utilities, and stubbed domain modules.
+- **Enhanced Database Verification Utility** — Modernized standalone DB inspector (`verify_db`) with structured `ClientView` row mapping displaying summary client/reading counts, formatted tabular client profiles, and chronological reading history logs.
+- **Clean Type Abstractions & Refactored Wizard UX** — Structured location resolution outputs (`LocationData`), refactored interactive wizard parameters (`ReadingParams`), deduplicated prompt helpers (`prompt_target_words`), validated status selections, precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and full test coverage across API, database, geocoding, utilities, and stubbed domain modules.
 
 ---
 
@@ -66,7 +66,7 @@ src/
 ├── geo.rs        # Geocoding, pure historical timezone resolution, and LocationData abstractions
 ├── utils.rs      # HTML report generation, filename sanitization, and escaping utilities with edge-case tests
 └── bin/
-    └── verify_db.rs # Standalone DB inspection utility
+    └── verify_db.rs # Standalone DB inspection utility with structured row mapping
 ```
 
 ---
@@ -80,8 +80,11 @@ export GEMINI_API_KEY="your-key-here"
 # Run tests
 cargo test
 
-# Build and run
+# Build and run interactive wizard
 cargo run --bin rust_llm_astrology_agent
+
+# Run database verification utility
+cargo run --bin verify_db
 ```
 
 > **Note:** The stubbed math/rules/dasha modules return dummy data. The pipeline will execute end-to-end but the generated readings will lack real astronomical input.

@@ -87,8 +87,8 @@ fn manage_client(
     let res = match client_opt {
         Some((id, status)) => {
             tx.execute(
-                "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
-                params![dob, time, id],
+                "UPDATE Clients SET city = ?, birth_data = ?, dob = ?, time = ? WHERE id = ?",
+                params![city, birth_data, dob, time, id],
             )?;
             println!(
                 "{}",
@@ -147,17 +147,28 @@ mod tests {
         assert_eq!(id1, 1);
         assert_eq!(status1, "Active");
 
-        // Repeat client check
+        // Repeat client check with updated city and details
         let (id2, status2) = manage_client(
             &mut conn,
             "John Doe",
-            "London",
+            "Manchester",
             "15/08/1990",
-            "10:45 AM",
-            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 1.00",
+            "11:00 AM",
+            "Date: 15/08/1990, Time: 11:00 AM, UTC Offset: 1.00",
         )?;
         assert_eq!(id2, 1);
         assert_eq!(status2, "Active");
+
+        // Verify that city and birth_data were updated in database
+        let mut stmt = conn.prepare("SELECT city, birth_data, time FROM Clients WHERE id = ?")?;
+        let (city, birth_data, time): (String, String, String) =
+            stmt.query_row(params![id2], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        assert_eq!(city, "Manchester");
+        assert_eq!(time, "11:00 AM");
+        assert_eq!(
+            birth_data,
+            "Date: 15/08/1990, Time: 11:00 AM, UTC Offset: 1.00"
+        );
 
         Ok(())
     }
