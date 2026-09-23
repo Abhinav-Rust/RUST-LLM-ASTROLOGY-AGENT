@@ -87,8 +87,8 @@ fn manage_client(
     let res = match client_opt {
         Some((id, status)) => {
             tx.execute(
-                "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
-                params![dob, time, id],
+                "UPDATE Clients SET city = ?, birth_data = ?, dob = ?, time = ? WHERE id = ?",
+                params![city, birth_data, dob, time, id],
             )?;
             println!(
                 "{}",
@@ -151,13 +151,17 @@ mod tests {
         let (id2, status2) = manage_client(
             &mut conn,
             "John Doe",
-            "London",
+            "Manchester",
             "15/08/1990",
             "10:45 AM",
-            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 1.00",
+            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 0.00",
         )?;
         assert_eq!(id2, 1);
         assert_eq!(status2, "Active");
+
+        let mut stmt = conn.prepare("SELECT city FROM Clients WHERE id = ?")?;
+        let updated_city: String = stmt.query_row(params![1], |r| r.get(0))?;
+        assert_eq!(updated_city, "Manchester");
 
         Ok(())
     }
@@ -943,7 +947,13 @@ async fn execute_reading_flow(
             "Reading generated! Opening in browser at: {}",
             absolute_path.display()
         );
-        let _ = open::that(&absolute_path);
+        if let Err(e) = open::that(&absolute_path) {
+            println!(
+                "[!] Could not auto-open browser ({}); report saved at {}",
+                e,
+                absolute_path.display()
+            );
+        }
     } else {
         // Fallback to terminal
         println!(
