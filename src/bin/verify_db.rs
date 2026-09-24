@@ -1,5 +1,14 @@
 use rusqlite::{Connection, Result};
 
+struct ClientView {
+    id: i64,
+    name: String,
+    city: String,
+    status: String,
+    dob: String,
+    time: String,
+}
+
 fn main() -> Result<()> {
     let db_path = "astrology_journal.db";
     if !std::path::Path::new(db_path).exists() {
@@ -26,14 +35,14 @@ fn main() -> Result<()> {
         "SELECT id, name, city, status, COALESCE(dob, 'N/A'), COALESCE(time, 'N/A') FROM Clients",
     )?;
     let client_rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, String>(5)?,
-        ))
+        Ok(ClientView {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            city: row.get(2)?,
+            status: row.get(3)?,
+            dob: row.get(4)?,
+            time: row.get(5)?,
+        })
     })?;
 
     println!(
@@ -43,10 +52,10 @@ fn main() -> Result<()> {
     println!("{}", "-".repeat(75));
 
     for client in client_rows {
-        let (id, name, city, status, dob, time) = client?;
+        let c = client?;
         println!(
             "{:<4} | {:<20} | {:<12} | {:<10} | {:<10} | {:<8}",
-            id, name, city, status, dob, time
+            c.id, c.name, c.city, c.status, c.dob, c.time
         );
     }
 
