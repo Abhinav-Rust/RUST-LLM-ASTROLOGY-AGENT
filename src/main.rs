@@ -87,8 +87,8 @@ fn manage_client(
     let res = match client_opt {
         Some((id, status)) => {
             tx.execute(
-                "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
-                params![dob, time, id],
+                "UPDATE Clients SET dob = ?, time = ?, city = ?, birth_data = ? WHERE id = ?",
+                params![dob, time, city, birth_data, id],
             )?;
             println!(
                 "{}",
@@ -147,17 +147,31 @@ mod tests {
         assert_eq!(id1, 1);
         assert_eq!(status1, "Active");
 
-        // Repeat client check
+        // Repeat client check with updated city and birth data
         let (id2, status2) = manage_client(
             &mut conn,
             "John Doe",
-            "London",
+            "Manchester",
             "15/08/1990",
-            "10:45 AM",
-            "Date: 15/08/1990, Time: 10:45 AM, UTC Offset: 1.00",
+            "11:00 AM",
+            "Date: 15/08/1990, Time: 11:00 AM, UTC Offset: 1.00",
         )?;
         assert_eq!(id2, 1);
         assert_eq!(status2, "Active");
+
+        let mut stmt =
+            conn.prepare("SELECT city, birth_data, dob, time FROM Clients WHERE id = ?")?;
+        let (city, birth_data, dob, time): (String, String, String, String) = stmt
+            .query_row(params![id1], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?;
+        assert_eq!(city, "Manchester");
+        assert_eq!(
+            birth_data,
+            "Date: 15/08/1990, Time: 11:00 AM, UTC Offset: 1.00"
+        );
+        assert_eq!(dob, "15/08/1990");
+        assert_eq!(time, "11:00 AM");
 
         Ok(())
     }
@@ -943,7 +957,17 @@ async fn execute_reading_flow(
             "Reading generated! Opening in browser at: {}",
             absolute_path.display()
         );
-        let _ = open::that(&absolute_path);
+        if let Err(e) = open::that(&absolute_path) {
+            eprintln!(
+                "{}",
+                style(format!(
+                    "[!] Warning: Could not open report in browser ({}): {}",
+                    absolute_path.display(),
+                    e
+                ))
+                .yellow()
+            );
+        }
     } else {
         // Fallback to terminal
         println!(
