@@ -434,6 +434,19 @@ mod tests {
             extract_target_date_from_text("Invalid date string", "2025-05-10"),
             "2026-05-10"
         );
+        // Multi-byte non-ASCII UTF-8 string testing
+        assert_eq!(
+            extract_target_date_from_text("目标日期是 2028-06-30 祝好", "2025-01-01"),
+            "2028-06-30"
+        );
+        assert_eq!(
+            extract_target_date_from_text("La date cible est 2029-04-12, merci!", "2025-01-01"),
+            "2029-04-12"
+        );
+        assert_eq!(
+            extract_target_date_from_text("無效日期測試", "2025-05-10"),
+            "2026-05-10"
+        );
     }
 
     #[test]
