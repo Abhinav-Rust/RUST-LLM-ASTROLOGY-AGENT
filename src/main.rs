@@ -902,10 +902,12 @@ async fn execute_reading_flow(
     }
 
     let combined_prompt = format!("{}\n\n{}", system_prompt, anonymized_user_prompt);
-    tokio::fs::create_dir_all("readings")
-        .await
-        .unwrap_or_default();
-    let _ = tokio::fs::write("readings/last_prompt_log.txt", &combined_prompt).await;
+    if let Err(e) = tokio::fs::create_dir_all("readings").await {
+        eprintln!("[!] Warning: Failed to create readings directory: {}", e);
+    }
+    if let Err(e) = tokio::fs::write("readings/last_prompt_log.txt", &combined_prompt).await {
+        eprintln!("[!] Warning: Failed to log prompt: {}", e);
+    }
 
     println!("Calling Gemini API...");
     let final_reading = match api::call_gemini_with_retry(
@@ -934,9 +936,9 @@ async fn execute_reading_flow(
     }
 
     // Presentation Layer
-    tokio::fs::create_dir_all("readings")
-        .await
-        .unwrap_or_default();
+    if let Err(e) = tokio::fs::create_dir_all("readings").await {
+        eprintln!("[!] Warning: Failed to create readings directory: {}", e);
+    }
 
     let html_content = utils::generate_html_report(&name, &final_reading);
 
@@ -944,23 +946,40 @@ async fn execute_reading_flow(
     let date_suffix = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let filename = format!("{}_{}.html", clean_name, date_suffix);
 
-    let mut absolute_path = std::env::current_dir().unwrap();
+    let mut absolute_path =
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     absolute_path.push("readings");
     absolute_path.push(&filename);
 
-    if let Ok(mut file) = tokio::fs::File::create(&absolute_path).await {
-        let _ = file.write_all(html_content.as_bytes()).await;
-        println!(
-            "Reading generated! Opening in browser at: {}",
-            absolute_path.display()
-        );
-        let _ = open::that(&absolute_path);
-    } else {
-        // Fallback to terminal
-        println!(
-            "\n--- AI Vedic Reading for {} ---\n{}\n--- End of Reading ---",
-            name, final_reading
-        );
+    match tokio::fs::File::create(&absolute_path).await {
+        Ok(mut file) => {
+            if let Err(e) = file.write_all(html_content.as_bytes()).await {
+                eprintln!("[!] Warning: Failed to write report file content: {}", e);
+            }
+            println!(
+                "Reading generated! Opening in browser at: {}",
+                absolute_path.display()
+            );
+            if let Err(e) = open::that(&absolute_path) {
+                eprintln!(
+                    "[!] Warning: Could not auto-open report in browser: {}. File saved at: {}",
+                    e,
+                    absolute_path.display()
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "[!] Warning: Failed to create report file ({}): {}",
+                absolute_path.display(),
+                e
+            );
+            // Fallback to terminal
+            println!(
+                "\n--- AI Vedic Reading for {} ---\n{}\n--- End of Reading ---",
+                name, final_reading
+            );
+        }
     }
 }
 

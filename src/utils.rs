@@ -117,6 +117,10 @@ mod tests {
         );
         assert_eq!(escape_html("Plain Text"), "Plain Text");
         assert_eq!(escape_html(""), "");
+        assert_eq!(
+            escape_html("François & Müller <éàè>"),
+            "François &amp; Müller &lt;éàè&gt;"
+        );
     }
 
     #[test]
@@ -175,5 +179,10 @@ mod tests {
         );
         assert!(html.contains("Querent: <strong>Jane &amp; John &lt;Doe&gt;</strong>"));
         assert!(html.contains("Line 1\nLine 2 &amp; &lt;More&gt;"));
+
+        let unicode_html =
+            generate_html_report(" François & Müller ", "Star alignment: ✨ <Great> 🌟");
+        assert!(unicode_html.contains("Querent: <strong> François &amp; Müller </strong>"));
+        assert!(unicode_html.contains("Star alignment: ✨ &lt;Great&gt; 🌟"));
     }
 }
