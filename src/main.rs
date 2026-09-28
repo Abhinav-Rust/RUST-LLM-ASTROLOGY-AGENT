@@ -905,7 +905,9 @@ async fn execute_reading_flow(
     tokio::fs::create_dir_all("readings")
         .await
         .unwrap_or_default();
-    let _ = tokio::fs::write("readings/last_prompt_log.txt", &combined_prompt).await;
+    if let Err(e) = tokio::fs::write("readings/last_prompt_log.txt", &combined_prompt).await {
+        eprintln!("[!] Warning: Could not write prompt log: {}", e);
+    }
 
     println!("Calling Gemini API...");
     let final_reading = match api::call_gemini_with_retry(
@@ -949,12 +951,20 @@ async fn execute_reading_flow(
     absolute_path.push(&filename);
 
     if let Ok(mut file) = tokio::fs::File::create(&absolute_path).await {
-        let _ = file.write_all(html_content.as_bytes()).await;
+        if let Err(e) = file.write_all(html_content.as_bytes()).await {
+            eprintln!("[!] Warning: Failed to write HTML report content: {}", e);
+        }
         println!(
             "Reading generated! Opening in browser at: {}",
             absolute_path.display()
         );
-        let _ = open::that(&absolute_path);
+        if let Err(e) = open::that(&absolute_path) {
+            eprintln!(
+                "[!] Warning: Could not open report in default browser ({}). File saved at: {}",
+                e,
+                absolute_path.display()
+            );
+        }
     } else {
         // Fallback to terminal
         println!(
@@ -1050,19 +1060,27 @@ async fn main() {
                 wait_for_enter();
             }
             2 => {
-                let _ = view_clients(&conn, None);
+                if let Err(e) = view_clients(&conn, None) {
+                    eprintln!("Database Error: {}", e);
+                }
                 wait_for_enter();
             }
             3 => {
-                let _ = search_clients(&conn);
+                if let Err(e) = search_clients(&conn) {
+                    eprintln!("Database Error: {}", e);
+                }
                 wait_for_enter();
             }
             4 => {
-                let _ = edit_client(&conn);
+                if let Err(e) = edit_client(&conn) {
+                    eprintln!("Database Error: {}", e);
+                }
                 wait_for_enter();
             }
             5 => {
-                let _ = delete_client(&mut conn);
+                if let Err(e) = delete_client(&mut conn) {
+                    eprintln!("Database Error: {}", e);
+                }
                 wait_for_enter();
             }
             6 => {
