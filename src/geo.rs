@@ -114,6 +114,12 @@ mod tests {
         let (tz_ny, offset_ny) = resolve_timezone_and_offset(40.7128, -74.0060, dt_winter).unwrap();
         assert_eq!(tz_ny, "America/New_York");
         assert_eq!(offset_ny, -5.0);
+
+        // Sydney in winter (AEST = UTC+10)
+        let (tz_sydney, offset_sydney) =
+            resolve_timezone_and_offset(-33.8688, 151.2093, dt).unwrap();
+        assert_eq!(tz_sydney, "Australia/Sydney");
+        assert_eq!(offset_sydney, 10.0);
     }
 
     #[test]

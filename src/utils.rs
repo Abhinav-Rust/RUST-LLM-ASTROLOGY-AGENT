@@ -141,6 +141,17 @@ mod tests {
             parse_flexible_date("15.08.1990"),
             Some(NaiveDate::from_ymd_opt(1990, 8, 15).unwrap())
         );
+        // Leap year handling
+        assert_eq!(
+            parse_flexible_date("29/02/2024"),
+            Some(NaiveDate::from_ymd_opt(2024, 2, 29).unwrap())
+        );
+        assert_eq!(parse_flexible_date("29/02/2023"), None);
+        // Whitespace handling
+        assert_eq!(
+            parse_flexible_date("   2024-05-20   "),
+            Some(NaiveDate::from_ymd_opt(2024, 5, 20).unwrap())
+        );
         assert_eq!(parse_flexible_date("invalid-date"), None);
     }
 
@@ -153,6 +164,18 @@ mod tests {
         assert_eq!(
             parse_flexible_time("10:45AM"),
             Some(NaiveTime::from_hms_opt(10, 45, 0).unwrap())
+        );
+        assert_eq!(
+            parse_flexible_time("12:00 AM"),
+            Some(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+        );
+        assert_eq!(
+            parse_flexible_time("12:00 PM"),
+            Some(NaiveTime::from_hms_opt(12, 0, 0).unwrap())
+        );
+        assert_eq!(
+            parse_flexible_time("01:15 PM"),
+            Some(NaiveTime::from_hms_opt(13, 15, 0).unwrap())
         );
         assert_eq!(
             parse_flexible_time("14:30"),
