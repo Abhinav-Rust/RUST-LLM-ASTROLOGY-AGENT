@@ -382,11 +382,16 @@ pub async fn extract_target_date(client: &Client, question: &str, current_date: 
     }
 }
 
+#[allow(clippy::collapsible_if)]
 fn fallback_date(current_date: &str) -> String {
-    #[allow(clippy::collapsible_if)]
     if let Ok(date) = NaiveDate::parse_from_str(current_date, "%Y-%m-%d") {
         if let Some(next_year) = date.with_year(date.year() + 1) {
             return next_year.format("%Y-%m-%d").to_string();
+        }
+        if date.month() == 2 && date.day() == 29 {
+            if let Some(fallback) = NaiveDate::from_ymd_opt(date.year() + 1, 2, 28) {
+                return fallback.format("%Y-%m-%d").to_string();
+            }
         }
     }
     "2030-01-01".to_string()
@@ -439,6 +444,7 @@ mod tests {
     #[test]
     fn test_fallback_date() {
         assert_eq!(fallback_date("2025-05-10"), "2026-05-10");
+        assert_eq!(fallback_date("2024-02-29"), "2025-02-28");
         assert_eq!(fallback_date("invalid-date"), "2030-01-01");
     }
 

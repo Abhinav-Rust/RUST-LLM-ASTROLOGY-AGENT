@@ -174,6 +174,34 @@ mod tests {
     }
 
     #[test]
+    fn test_edit_client_dob_and_time() -> Result<()> {
+        let mut conn = init_test_db()?;
+
+        let (client_id, _) = manage_client(
+            &mut conn,
+            "David Miller",
+            "Chicago",
+            "05/05/1992",
+            "09:30 AM",
+            "Date: 05/05/1992, Time: 09:30 AM, UTC Offset: -5.00",
+        )?;
+
+        conn.execute(
+            "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
+            params!["1992-05-05", "10:00", client_id],
+        )?;
+
+        let mut stmt =
+            conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE id = ?")?;
+        let client = stmt.query_row(params![client_id], ClientRecord::from_row)?;
+
+        assert_eq!(client.dob, Some("1992-05-05".to_string()));
+        assert_eq!(client.time, Some("10:00".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
     fn test_save_reading_and_query() -> Result<()> {
         let mut conn = init_test_db()?;
 
@@ -455,7 +483,13 @@ fn edit_client(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    let fields = &["Name", "City", "Status (Active/Refused)"];
+    let fields = &[
+        "Name",
+        "City",
+        "Date of Birth (DOB)",
+        "Time of Birth",
+        "Status (Active/Refused)",
+    ];
     let selection = Select::new()
         .with_prompt("What would you like to update?")
         .items(fields)
@@ -487,6 +521,46 @@ fn edit_client(conn: &Connection) -> Result<()> {
             println!("Client City updated successfully.");
         }
         2 => {
+            let new_dob: String = loop {
+                let input: String = Input::new()
+                    .with_prompt("Enter new Date of Birth (e.g., 15/08/1990 or 1990-08-15)")
+                    .interact_text()
+                    .unwrap();
+                if utils::parse_flexible_date(&input).is_some() {
+                    break input;
+                }
+                println!(
+                    "{}",
+                    style("Invalid date format. Please use DD/MM/YYYY or YYYY-MM-DD.").red()
+                );
+            };
+            conn.execute(
+                "UPDATE Clients SET dob = ? WHERE id = ?",
+                params![new_dob, id],
+            )?;
+            println!("Client Date of Birth updated successfully.");
+        }
+        3 => {
+            let new_time: String = loop {
+                let input: String = Input::new()
+                    .with_prompt("Enter new Time of Birth (e.g., 10:45 AM or 14:30)")
+                    .interact_text()
+                    .unwrap();
+                if utils::parse_flexible_time(&input).is_some() {
+                    break input;
+                }
+                println!(
+                    "{}",
+                    style("Invalid time format. Please use HH:MM AM/PM or HH:MM.").red()
+                );
+            };
+            conn.execute(
+                "UPDATE Clients SET time = ? WHERE id = ?",
+                params![new_time, id],
+            )?;
+            println!("Client Time of Birth updated successfully.");
+        }
+        4 => {
             let status_options = &["Active", "Refused"];
             let status_selection = Select::new()
                 .with_prompt("Select new Status")
@@ -954,7 +1028,17 @@ async fn execute_reading_flow(
             "Reading generated! Opening in browser at: {}",
             absolute_path.display()
         );
-        let _ = open::that(&absolute_path);
+        if let Err(e) = open::that(&absolute_path) {
+            eprintln!(
+                "{}",
+                style(format!(
+                    "[!] Warning: Could not open browser report at {}: {}",
+                    absolute_path.display(),
+                    e
+                ))
+                .yellow()
+            );
+        }
     } else {
         // Fallback to terminal
         println!(
