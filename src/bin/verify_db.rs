@@ -61,7 +61,8 @@ fn main() -> Result<()> {
 
     println!("\n--- Archived AI Readings ---");
     let mut stmt = conn.prepare(
-        "SELECT r.id, c.name, r.timestamp, r.question FROM Readings r JOIN Clients c ON r.client_id = c.id ORDER BY r.timestamp DESC",
+        "SELECT r.id, COALESCE(c.name, 'Unknown Client'), r.timestamp, r.question \
+         FROM Readings r LEFT JOIN Clients c ON r.client_id = c.id ORDER BY r.timestamp DESC",
     )?;
     let reading_rows = stmt.query_map([], |row| {
         Ok((
