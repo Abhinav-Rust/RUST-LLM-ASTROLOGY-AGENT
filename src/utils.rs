@@ -8,6 +8,31 @@ pub fn parse_flexible_date(input: &str) -> Option<NaiveDate> {
             return Some(dt);
         }
     }
+
+    // Try normalizing single-digit day/month parts (e.g., "1/8/1990" -> "01/08/1990")
+    if let Some(sep) = ['/', '-', '.'].into_iter().find(|&s| trimmed.contains(s)) {
+        let parts: Vec<&str> = trimmed.split(sep).collect();
+        if parts.len() == 3 {
+            let normalized = parts
+                .iter()
+                .map(|p| {
+                    if p.len() == 1 && p.chars().all(|c| c.is_ascii_digit()) {
+                        format!("0{}", p)
+                    } else {
+                        p.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(&sep.to_string());
+
+            for fmt in &formats {
+                if let Ok(dt) = NaiveDate::parse_from_str(&normalized, fmt) {
+                    return Some(dt);
+                }
+            }
+        }
+    }
+
     None
 }
 
@@ -21,6 +46,20 @@ pub fn parse_flexible_time(input: &str) -> Option<NaiveTime> {
             return Some(t);
         }
     }
+
+    // Try normalizing single-digit hour (e.g., "9:05 AM" -> "09:05 AM")
+    #[allow(clippy::collapsible_if)]
+    if let Some((hour_part, rest)) = trimmed.split_once(':') {
+        if hour_part.len() == 1 && hour_part.chars().all(|c| c.is_ascii_digit()) {
+            let normalized = format!("0{}:{}", hour_part, rest);
+            for fmt in &formats {
+                if let Ok(t) = NaiveTime::parse_from_str(&normalized, fmt) {
+                    return Some(t);
+                }
+            }
+        }
+    }
+
     None
 }
 
@@ -145,6 +184,22 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_flexible_date_single_digits() {
+        assert_eq!(
+            parse_flexible_date("1/8/1990"),
+            Some(NaiveDate::from_ymd_opt(1990, 8, 1).unwrap())
+        );
+        assert_eq!(
+            parse_flexible_date("1990-8-1"),
+            Some(NaiveDate::from_ymd_opt(1990, 8, 1).unwrap())
+        );
+        assert_eq!(
+            parse_flexible_date("1.8.1990"),
+            Some(NaiveDate::from_ymd_opt(1990, 8, 1).unwrap())
+        );
+    }
+
+    #[test]
     fn test_parse_flexible_time() {
         assert_eq!(
             parse_flexible_time("10:45 AM"),
@@ -163,6 +218,18 @@ mod tests {
             Some(NaiveTime::from_hms_opt(14, 30, 15).unwrap())
         );
         assert_eq!(parse_flexible_time("invalid-time"), None);
+    }
+
+    #[test]
+    fn test_parse_flexible_time_single_digit_hour() {
+        assert_eq!(
+            parse_flexible_time("9:05 AM"),
+            Some(NaiveTime::from_hms_opt(9, 5, 0).unwrap())
+        );
+        assert_eq!(
+            parse_flexible_time("9:30"),
+            Some(NaiveTime::from_hms_opt(9, 30, 0).unwrap())
+        );
     }
 
     #[test]
