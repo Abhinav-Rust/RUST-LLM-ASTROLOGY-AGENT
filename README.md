@@ -14,17 +14,16 @@
 
 This project demonstrates a high-performance system designed to orchestrate complex, multi-step AI workflows against rate-limited APIs. While the system was originally deployed for production Vedic astrology readings, the core patterns and architecture generalize to any complex multi-agent domain requiring:
 
-- **Multi-agent orchestration** — Agent 1 extracts structured parameters from natural language; Agent 2 generates long-form analytical output conditioned on deterministic data.
-- **Resilient API communication** — Custom exponential backoff with dynamic rate-limit parsing directly from error message bodies, `Retry-After` header respect, and configurable retry ceilings.
-- **Connection lifecycle management** — Deliberate connection tearing via `pool_idle_timeout`, `pool_max_idle_per_host`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
-- **Robust UTF-8 Safe & Flexible Date/Time Parsing** — Zero-panic multi-window date extraction (`extract_target_date_from_text`) with strict `YYYY-MM-DD` pattern verification and flexible date/time parser utilities (`parse_flexible_date`, `parse_flexible_time`) supporting `DD/MM/YYYY`, `YYYY-MM-DD`, `DD-MM-YYYY`, `MM/DD/YYYY`, 12-hour AM/PM, and 24-hour time inputs.
+- **Multi-Agent Orchestration** — Agent 1 extracts structured temporal parameters from natural language queries; Agent 2 generates long-form analytical output conditioned on deterministic chart data.
+- **Resilient API Communication** — Custom exponential backoff with dynamic rate-limit parsing directly from Gemini JSON error payloads (`retry in Xs`), `Retry-After` HTTP header respect, and configurable retry ceilings.
+- **Connection Lifecycle Management** — Deliberate connection tearing via `pool_idle_timeout(5s)`, `pool_max_idle_per_host(1)`, and disabled TCP keepalive to survive long inter-request cooldowns on free-tier APIs.
+- **Robust UTF-8 Safe & Flexible Date/Time Parsing** — Zero-panic multi-window date extraction (`extract_target_date_from_text`) with strict `YYYY-MM-DD` pattern verification and flexible parser utilities (`parse_flexible_date`, `parse_flexible_time`) supporting `DD/MM/YYYY`, `YYYY-MM-DD`, `DD-MM-YYYY`, `MM/DD/YYYY`, 12-hour AM/PM, and 24-hour time inputs.
 - **Pure Timezone & Historical Offset Resolution** — Decoupled offline spatial timezone lookups (`tzf-rs`) and historical UTC offset resolution (`chrono-tz`) into testable pure functions (`resolve_timezone_and_offset`).
-- **Modern Responsive HTML Report Generation** — Centralized HTML report builder (`generate_html_report`) with character escaping sanitization (`escape_html`), responsive card layouts, dark header gradients, mobile breakpoint media queries, generation timestamp metadata, and auto-opening via `open`.
-- **Zero-copy prompt pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
-- **Transactional SQLite Persistence & Dynamic Schema Migrations** — Atomic client profile management (`manage_client`) updating city, birth data, DOB, and time for repeat clients alongside reading deletions using explicit SQLite transactions (`conn.transaction()`), dynamic column migrations via `PRAGMA table_info` (`ensure_client_columns`), centralized table/index initialization (`create_tables`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
-- **API Key Validation & Resilient Execution** — Early env validation for `GEMINI_API_KEY` returning structured `GeminiError::ServerError` before making HTTP calls.
-- **Enhanced Database Verification Utility** — Modernized standalone DB inspector (`verify_db`) with structured `ClientView` row mapping displaying summary client/reading counts, formatted tabular client profiles, and chronological reading history logs.
-- **Clean Type Abstractions & Refactored Wizard UX** — Structured location resolution outputs (`LocationData`), refactored interactive wizard parameters (`ReadingParams`), deduplicated prompt helpers (`prompt_target_words`), validated status selections, precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and full test coverage across API, database, geocoding, utilities, and stubbed domain modules.
+- **Enhanced Responsive & Print-Ready HTML Reports** — Centralized HTML report builder (`generate_html_report`) featuring HTML character sanitization (`escape_html`), responsive card layouts, dark header gradients, mobile breakpoints, generation timestamp metadata, print media query styles (`@media print`), and auto-opening with explicit error logging.
+- **Zero-Copy Prompt Pipelines & Data Anonymization** — Multi-stage prompt assembly with client PII anonymization before API submission.
+- **Transactional SQLite Persistence & Dynamic Schema Migrations** — Atomic client profile management (`manage_client`), full TUI editing (`edit_client`) for Name, City, DOB, Time of Birth, and Status with interactive format validation, reading deletions in single transactions (`conn.transaction()`), dynamic column migrations via `PRAGMA table_info` (`ensure_client_columns`), centralized table/index initialization (`create_tables`), indexed lookup queries, and clean row mapping abstractions (`ClientRecord::from_row`).
+- **Harden DB Verification Utility** — Modernized standalone DB inspector (`verify_db`) with `LEFT JOIN` and `COALESCE` mapping to display summary client/reading counts, formatted tabular client profiles, and chronological reading history logs.
+- **Clean Type Abstractions & Full Test Suite** — Structured location resolution outputs (`LocationData`), interactive wizard parameters (`ReadingParams`), deduplicated prompt helpers (`prompt_target_words`), precise dependency pinning (`tzf-rs = "=1.2.0"`), robust filename sanitization (`sanitize_filename`), and test coverage across API, database, geocoding, utilities, and stubbed domain modules.
 
 ---
 
@@ -49,6 +48,7 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 | Timezone Resolution | `tzf-rs` (offline, embedded TZ database) |
 | Historical TZ Offsets | `chrono-tz` |
 | TUI | `dialoguer` + `console` |
+| Cross-Platform Launch | `open` crate |
 | Serialization | `serde` + `serde_json` |
 
 ---
@@ -58,15 +58,15 @@ Please see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details and Mer
 ```
 src/
 ├── lib.rs        # Shared library exposing API, dasha, geo, math, rules, and utils
-├── main.rs       # CLI/TUI, orchestration, DB layer, presentation, and DB tests
+├── main.rs       # CLI/TUI, orchestration, client management, DB layer, report generation, and tests
 ├── api.rs        # Gemini API client, retry logic, UTF-8 safe date parsing, and backoff engine
 ├── math.rs       # [STUBBED] Planetary position calculations and math engine tests
 ├── rules.rs      # [STUBBED] Vedic astrology rules engine and summary tests
 ├── dasha.rs      # [STUBBED] Vimshottari Dasha timeline generator and engine tests
 ├── geo.rs        # Geocoding, pure historical timezone resolution, and LocationData abstractions
-├── utils.rs      # HTML report generation, filename sanitization, and escaping utilities with edge-case tests
+├── utils.rs      # HTML report generation, print styles, filename sanitization, and escaping utilities with tests
 └── bin/
-    └── verify_db.rs # Standalone DB inspection utility with structured row mapping
+    └── verify_db.rs # Standalone DB inspection utility with LEFT JOIN row mapping
 ```
 
 ---
@@ -77,10 +77,10 @@ src/
 # Set your Gemini API key
 export GEMINI_API_KEY="your-key-here"
 
-# Run tests
+# Run all workspace unit tests
 cargo test
 
-# Build and run interactive wizard
+# Build and run interactive wizard & client management TUI
 cargo run --bin rust_llm_astrology_agent
 
 # Run database verification utility
