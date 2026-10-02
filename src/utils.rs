@@ -126,8 +126,16 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(1990, 8, 15).unwrap())
         );
         assert_eq!(
+            parse_flexible_date("5/8/1990"),
+            Some(NaiveDate::from_ymd_opt(1990, 8, 5).unwrap())
+        );
+        assert_eq!(
             parse_flexible_date("1990-08-15"),
             Some(NaiveDate::from_ymd_opt(1990, 8, 15).unwrap())
+        );
+        assert_eq!(
+            parse_flexible_date("1990-8-5"),
+            Some(NaiveDate::from_ymd_opt(1990, 8, 5).unwrap())
         );
         assert_eq!(
             parse_flexible_date("15-08-1990"),
@@ -149,6 +157,10 @@ mod tests {
         assert_eq!(
             parse_flexible_time("10:45 AM"),
             Some(NaiveTime::from_hms_opt(10, 45, 0).unwrap())
+        );
+        assert_eq!(
+            parse_flexible_time("9:30 AM"),
+            Some(NaiveTime::from_hms_opt(9, 30, 0).unwrap())
         );
         assert_eq!(
             parse_flexible_time("10:45AM"),
