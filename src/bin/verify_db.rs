@@ -60,23 +60,32 @@ fn main() -> Result<()> {
     }
 
     println!("\n--- Archived AI Readings ---");
+    struct ReadingView {
+        id: i64,
+        client_name: String,
+        timestamp: String,
+        question: String,
+    }
+
     let mut stmt = conn.prepare(
-        "SELECT r.id, c.name, r.timestamp, r.question FROM Readings r JOIN Clients c ON r.client_id = c.id ORDER BY r.timestamp DESC",
+        "SELECT r.id, COALESCE(c.name, 'Unknown Client'), r.timestamp, r.question \
+         FROM Readings r LEFT JOIN Clients c ON r.client_id = c.id \
+         ORDER BY r.timestamp DESC",
     )?;
     let reading_rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-        ))
+        Ok(ReadingView {
+            id: row.get(0)?,
+            client_name: row.get(1)?,
+            timestamp: row.get(2)?,
+            question: row.get(3)?,
+        })
     })?;
 
-    for reading in reading_rows {
-        let (id, name, timestamp, question) = reading?;
+    for reading_res in reading_rows {
+        let reading = reading_res?;
         println!(
             "Reading #{} | Client: {} | Date: {}\n  Question: {}\n",
-            id, name, timestamp, question
+            reading.id, reading.client_name, reading.timestamp, reading.question
         );
     }
 

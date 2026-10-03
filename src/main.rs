@@ -313,8 +313,8 @@ mod tests {
         )?;
 
         conn.execute(
-            "UPDATE Clients SET city = ?, status = ? WHERE id = ?",
-            params!["Osaka", "Refused", client_id],
+            "UPDATE Clients SET city = ?, status = ?, dob = ?, time = ? WHERE id = ?",
+            params!["Osaka", "Refused", "12/12/1988", "09:00 AM", client_id],
         )?;
 
         let mut stmt =
@@ -323,6 +323,8 @@ mod tests {
 
         assert_eq!(client.city, "Osaka");
         assert_eq!(client.status, "Refused");
+        assert_eq!(client.dob.as_deref(), Some("12/12/1988"));
+        assert_eq!(client.time.as_deref(), Some("09:00 AM"));
 
         Ok(())
     }
@@ -455,7 +457,13 @@ fn edit_client(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    let fields = &["Name", "City", "Status (Active/Refused)"];
+    let fields = &[
+        "Name",
+        "City",
+        "Date of Birth (DOB)",
+        "Time of Birth",
+        "Status (Active/Refused)",
+    ];
     let selection = Select::new()
         .with_prompt("What would you like to update?")
         .items(fields)
@@ -487,6 +495,48 @@ fn edit_client(conn: &Connection) -> Result<()> {
             println!("Client City updated successfully.");
         }
         2 => {
+            let new_dob: String = loop {
+                let input: String = Input::new()
+                    .with_prompt("Enter new Date of Birth (e.g., 15/08/1990 or 1990-08-15)")
+                    .interact_text()
+                    .unwrap();
+                if utils::parse_flexible_date(&input).is_some() {
+                    break input;
+                }
+                println!(
+                    "{}",
+                    style("Invalid date format. Please use DD/MM/YYYY or YYYY-MM-DD (e.g., 15/08/1990).")
+                        .red()
+                );
+            };
+            conn.execute(
+                "UPDATE Clients SET dob = ? WHERE id = ?",
+                params![new_dob, id],
+            )?;
+            println!("Client Date of Birth updated successfully.");
+        }
+        3 => {
+            let new_time: String = loop {
+                let input: String = Input::new()
+                    .with_prompt("Enter new Time of Birth (e.g., 10:45 AM or 14:30)")
+                    .interact_text()
+                    .unwrap();
+                if utils::parse_flexible_time(&input).is_some() {
+                    break input;
+                }
+                println!(
+                    "{}",
+                    style("Invalid time format. Please use HH:MM AM/PM or HH:MM (e.g., 10:45 AM or 14:30).")
+                        .red()
+                );
+            };
+            conn.execute(
+                "UPDATE Clients SET time = ? WHERE id = ?",
+                params![new_time, id],
+            )?;
+            println!("Client Time of Birth updated successfully.");
+        }
+        4 => {
             let status_options = &["Active", "Refused"];
             let status_selection = Select::new()
                 .with_prompt("Select new Status")
