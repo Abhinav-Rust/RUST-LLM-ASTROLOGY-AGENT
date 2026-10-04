@@ -174,6 +174,34 @@ mod tests {
     }
 
     #[test]
+    fn test_update_client_dob_and_time() -> Result<()> {
+        let mut conn = init_test_db()?;
+
+        let (client_id, _) = manage_client(
+            &mut conn,
+            "Eve Adams",
+            "Chicago",
+            "01/01/1990",
+            "09:00 AM",
+            "Date: 01/01/1990, Time: 09:00 AM, UTC Offset: -6.00",
+        )?;
+
+        conn.execute(
+            "UPDATE Clients SET dob = ?, time = ? WHERE id = ?",
+            params!["02/02/1991", "10:30 AM", client_id],
+        )?;
+
+        let mut stmt =
+            conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE id = ?")?;
+        let client = stmt.query_row(params![client_id], ClientRecord::from_row)?;
+
+        assert_eq!(client.dob, Some("02/02/1991".to_string()));
+        assert_eq!(client.time, Some("10:30 AM".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
     fn test_save_reading_and_query() -> Result<()> {
         let mut conn = init_test_db()?;
 
@@ -455,7 +483,13 @@ fn edit_client(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    let fields = &["Name", "City", "Status (Active/Refused)"];
+    let fields = &[
+        "Name",
+        "City",
+        "Date of Birth (DOB)",
+        "Time of Birth",
+        "Status (Active/Refused)",
+    ];
     let selection = Select::new()
         .with_prompt("What would you like to update?")
         .items(fields)
@@ -487,6 +521,50 @@ fn edit_client(conn: &Connection) -> Result<()> {
             println!("Client City updated successfully.");
         }
         2 => {
+            let new_dob: String = loop {
+                let input: String = Input::new()
+                    .with_prompt("Enter new Date of Birth (e.g., 15/08/1990 or 1990-08-15)")
+                    .interact_text()
+                    .unwrap();
+                if utils::parse_flexible_date(&input).is_some() {
+                    break input;
+                }
+                println!(
+                    "{}",
+                    style("Invalid date format. Please use DD/MM/YYYY or YYYY-MM-DD (e.g., 15/08/1990).")
+                        .red()
+                );
+            };
+            conn.execute(
+                "UPDATE Clients SET dob = ? WHERE id = ?",
+                params![new_dob, id],
+            )?;
+            println!("Client DOB updated successfully.");
+        }
+        3 => {
+            let new_time: String = loop {
+                let input: String = Input::new()
+                    .with_prompt("Enter new Time of Birth (e.g., 10:45 AM or 14:30)")
+                    .interact_text()
+                    .unwrap();
+                if utils::parse_flexible_time(&input).is_some() {
+                    break input;
+                }
+                println!(
+                    "{}",
+                    style(
+                        "Invalid time format. Please use HH:MM AM/PM or HH:MM (e.g., 10:45 AM or 14:30)."
+                    )
+                    .red()
+                );
+            };
+            conn.execute(
+                "UPDATE Clients SET time = ? WHERE id = ?",
+                params![new_time, id],
+            )?;
+            println!("Client Time of Birth updated successfully.");
+        }
+        4 => {
             let status_options = &["Active", "Refused"];
             let status_selection = Select::new()
                 .with_prompt("Select new Status")
@@ -949,12 +1027,25 @@ async fn execute_reading_flow(
     absolute_path.push(&filename);
 
     if let Ok(mut file) = tokio::fs::File::create(&absolute_path).await {
-        let _ = file.write_all(html_content.as_bytes()).await;
-        println!(
-            "Reading generated! Opening in browser at: {}",
-            absolute_path.display()
-        );
-        let _ = open::that(&absolute_path);
+        if let Err(e) = file.write_all(html_content.as_bytes()).await {
+            eprintln!("Failed to write HTML report to file: {}", e);
+        } else {
+            println!(
+                "Reading generated! Opening in browser at: {}",
+                absolute_path.display()
+            );
+            if let Err(e) = open::that(&absolute_path) {
+                println!(
+                    "{}",
+                    style(format!(
+                        "[!] Warning: Could not open HTML report automatically ({}) at {}",
+                        e,
+                        absolute_path.display()
+                    ))
+                    .yellow()
+                );
+            }
+        }
     } else {
         // Fallback to terminal
         println!(
