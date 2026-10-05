@@ -59,6 +59,101 @@ fn ensure_client_columns(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+pub fn prompt_input(prompt: &str) -> Option<String> {
+    Input::<String>::new()
+        .with_prompt(prompt)
+        .interact_text()
+        .ok()
+}
+
+pub fn prompt_select(prompt: &str, items: &[&str], default: usize) -> Option<usize> {
+    Select::new()
+        .with_prompt(prompt)
+        .items(items)
+        .default(default)
+        .interact()
+        .ok()
+}
+
+pub fn prompt_confirm(prompt: &str, default: bool) -> Option<bool> {
+    Confirm::new()
+        .with_prompt(prompt)
+        .default(default)
+        .interact()
+        .ok()
+}
+
+fn view_client_reading_history(conn: &Connection) -> Result<()> {
+    let search_name = match prompt_input("Enter client name to view reading history") {
+        Some(s) if !s.trim().is_empty() => s,
+        _ => {
+            println!("Action cancelled.");
+            return Ok(());
+        }
+    };
+
+    let mut stmt =
+        conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE name LIKE ?")?;
+    let query_term = format!("%{}%", search_name);
+    let clients = stmt
+        .query_map(params![query_term], ClientRecord::from_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if clients.is_empty() {
+        println!("{}", style("No matching client found.").red());
+        return Ok(());
+    }
+
+    let target_client = if clients.len() == 1 {
+        &clients[0]
+    } else {
+        println!("\nMultiple clients match:");
+        for c in &clients {
+            println!("  [{}] {} ({})", c.id, c.name, c.city);
+        }
+        let id_str: String = Input::new()
+            .with_prompt("Enter the exact ID of the client")
+            .interact_text()
+            .unwrap();
+        let target_id = id_str.trim().parse::<i64>().unwrap_or(-1);
+        match clients.iter().find(|c| c.id == target_id) {
+            Some(c) => c,
+            None => {
+                println!("{}", style("Client ID not found.").red());
+                return Ok(());
+            }
+        }
+    };
+
+    let readings = get_client_readings(conn, target_client.id)?;
+    if readings.is_empty() {
+        println!(
+            "No historical readings found for {}.",
+            style(&target_client.name).bold()
+        );
+        return Ok(());
+    }
+
+    println!(
+        "\n--- Reading History for {} ({} recorded) ---",
+        style(&target_client.name).cyan().bold(),
+        readings.len()
+    );
+
+    for (idx, r) in readings.iter().enumerate() {
+        println!(
+            "\n[Reading #{}] Timestamp: {}",
+            readings.len() - idx,
+            r.timestamp
+        );
+        println!("Question: {}", style(&r.question).yellow());
+        println!("Response:\n{}", r.full_ai_response);
+        println!("{}", "-".repeat(60));
+    }
+
+    Ok(())
+}
+
 fn init_db() -> Result<Connection> {
     let conn = Connection::open("astrology_journal.db")?;
     create_tables(&conn)?;
@@ -394,6 +489,38 @@ fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &st
     )?;
     Ok(())
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReadingRecord {
+    pub id: i64,
+    pub client_id: i64,
+    pub timestamp: String,
+    pub question: String,
+    pub full_ai_response: String,
+}
+
+impl ReadingRecord {
+    pub fn from_row(row: &rusqlite::Row<'_>) -> Result<Self> {
+        Ok(ReadingRecord {
+            id: row.get(0)?,
+            client_id: row.get(1)?,
+            timestamp: row.get(2)?,
+            question: row.get(3)?,
+            full_ai_response: row.get(4)?,
+        })
+    }
+}
+
+pub fn get_client_readings(conn: &Connection, client_id: i64) -> Result<Vec<ReadingRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, client_id, timestamp, question, full_ai_response FROM Readings WHERE client_id = ? ORDER BY timestamp DESC",
+    )?;
+    let readings = stmt
+        .query_map(params![client_id], ReadingRecord::from_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(readings)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClientRecord {
     pub id: i64,
@@ -451,10 +578,13 @@ fn view_clients(conn: &Connection, results: Option<Vec<ClientRecord>>) -> Result
 }
 
 fn search_clients(conn: &Connection) -> Result<()> {
-    let search_term: String = Input::new()
-        .with_prompt("Enter part or all of the client's name")
-        .interact_text()
-        .unwrap();
+    let search_term = match prompt_input("Enter part or all of the client's name") {
+        Some(s) if !s.trim().is_empty() => s,
+        _ => {
+            println!("Action cancelled.");
+            return Ok(());
+        }
+    };
 
     let mut stmt =
         conn.prepare("SELECT id, name, city, status, dob, time FROM Clients WHERE name LIKE ?")?;
@@ -473,11 +603,12 @@ fn search_clients(conn: &Connection) -> Result<()> {
 }
 
 fn edit_client(conn: &Connection) -> Result<()> {
-    let id: i64 = Input::new()
-        .with_prompt("Enter the ID of the client (or type 0 to cancel)")
-        .interact_text()
-        .unwrap();
+    let id_str = match prompt_input("Enter the ID of the client (or type 0 to cancel)") {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
+    let id: i64 = id_str.trim().parse().unwrap_or(0);
     if id == 0 {
         println!("Action cancelled.");
         return Ok(());
@@ -490,19 +621,17 @@ fn edit_client(conn: &Connection) -> Result<()> {
         "Time of Birth",
         "Status (Active/Refused)",
     ];
-    let selection = Select::new()
-        .with_prompt("What would you like to update?")
-        .items(fields)
-        .default(0)
-        .interact()
-        .unwrap();
+    let selection = match prompt_select("What would you like to update?", fields, 0) {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     match selection {
         0 => {
-            let new_name: String = Input::new()
-                .with_prompt("Enter new Name")
-                .interact_text()
-                .unwrap();
+            let new_name = match prompt_input("Enter new Name") {
+                Some(s) => s,
+                None => return Ok(()),
+            };
             conn.execute(
                 "UPDATE Clients SET name = ? WHERE id = ?",
                 params![new_name, id],
@@ -510,10 +639,10 @@ fn edit_client(conn: &Connection) -> Result<()> {
             println!("Client Name updated successfully.");
         }
         1 => {
-            let new_city: String = Input::new()
-                .with_prompt("Enter new City")
-                .interact_text()
-                .unwrap();
+            let new_city = match prompt_input("Enter new City") {
+                Some(s) => s,
+                None => return Ok(()),
+            };
             conn.execute(
                 "UPDATE Clients SET city = ? WHERE id = ?",
                 params![new_city, id],
@@ -521,11 +650,13 @@ fn edit_client(conn: &Connection) -> Result<()> {
             println!("Client City updated successfully.");
         }
         2 => {
-            let new_dob: String = loop {
-                let input: String = Input::new()
-                    .with_prompt("Enter new Date of Birth (e.g., 15/08/1990 or 1990-08-15)")
-                    .interact_text()
-                    .unwrap();
+            let new_dob = loop {
+                let input = match prompt_input(
+                    "Enter new Date of Birth (e.g., 15/08/1990 or 1990-08-15)",
+                ) {
+                    Some(s) => s,
+                    None => return Ok(()),
+                };
                 if utils::parse_flexible_date(&input).is_some() {
                     break input;
                 }
@@ -542,11 +673,12 @@ fn edit_client(conn: &Connection) -> Result<()> {
             println!("Client DOB updated successfully.");
         }
         3 => {
-            let new_time: String = loop {
-                let input: String = Input::new()
-                    .with_prompt("Enter new Time of Birth (e.g., 10:45 AM or 14:30)")
-                    .interact_text()
-                    .unwrap();
+            let new_time = loop {
+                let input = match prompt_input("Enter new Time of Birth (e.g., 10:45 AM or 14:30)")
+                {
+                    Some(s) => s,
+                    None => return Ok(()),
+                };
                 if utils::parse_flexible_time(&input).is_some() {
                     break input;
                 }
@@ -566,12 +698,10 @@ fn edit_client(conn: &Connection) -> Result<()> {
         }
         4 => {
             let status_options = &["Active", "Refused"];
-            let status_selection = Select::new()
-                .with_prompt("Select new Status")
-                .items(status_options)
-                .default(0)
-                .interact()
-                .unwrap();
+            let status_selection = match prompt_select("Select new Status", status_options, 0) {
+                Some(s) => s,
+                None => return Ok(()),
+            };
             let new_status = status_options[status_selection];
             conn.execute(
                 "UPDATE Clients SET status = ? WHERE id = ?",
@@ -593,21 +723,22 @@ fn delete_client_record(conn: &mut Connection, id: i64) -> Result<()> {
 }
 
 fn delete_client(conn: &mut Connection) -> Result<()> {
-    let id: i64 = Input::new()
-        .with_prompt("Enter the ID of the client to DELETE (or 0 to cancel)")
-        .interact_text()
-        .unwrap();
+    let id_str = match prompt_input("Enter the ID of the client to DELETE (or 0 to cancel)") {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
+    let id: i64 = id_str.trim().parse().unwrap_or(0);
     if id == 0 {
         println!("Action cancelled.");
         return Ok(());
     }
 
-    let confirmed = Confirm::new()
-        .with_prompt("Are you sure you want to delete this client and all their readings? This cannot be undone.")
-        .default(false)
-        .interact()
-        .unwrap();
+    let confirmed = prompt_confirm(
+        "Are you sure you want to delete this client and all their readings? This cannot be undone.",
+        false,
+    )
+    .unwrap_or(false);
 
     if confirmed {
         delete_client_record(conn, id)?;
@@ -627,19 +758,13 @@ pub struct ReadingParams {
     pub target_words: u32,
 }
 
-fn launch_wizard() -> ReadingParams {
+fn launch_wizard() -> Option<ReadingParams> {
     println!("\n--- Run New Astrology Reading ---");
 
-    let name: String = Input::new()
-        .with_prompt("Enter Client Name")
-        .interact_text()
-        .unwrap();
+    let name = prompt_input("Enter Client Name")?;
 
-    let date: String = loop {
-        let input: String = Input::new()
-            .with_prompt("Enter Date of Birth (e.g., 15/08/1990 or 1990-08-15)")
-            .interact_text()
-            .unwrap();
+    let date = loop {
+        let input = prompt_input("Enter Date of Birth (e.g., 15/08/1990 or 1990-08-15)")?;
         if utils::parse_flexible_date(&input).is_some() {
             break input;
         }
@@ -650,11 +775,8 @@ fn launch_wizard() -> ReadingParams {
         );
     };
 
-    let time: String = loop {
-        let input: String = Input::new()
-            .with_prompt("Enter Time of Birth (e.g., 10:45 AM or 14:30)")
-            .interact_text()
-            .unwrap();
+    let time = loop {
+        let input = prompt_input("Enter Time of Birth (e.g., 10:45 AM or 14:30)")?;
         if utils::parse_flexible_time(&input).is_some() {
             break input;
         }
@@ -667,41 +789,34 @@ fn launch_wizard() -> ReadingParams {
         );
     };
 
-    let city: String = Input::new()
-        .with_prompt("Enter City of Birth")
-        .interact_text()
-        .unwrap();
-    let question: String = Input::new()
-        .with_prompt("Enter the Querent's Question")
-        .interact_text()
-        .unwrap();
+    let city = prompt_input("Enter City of Birth")?;
+    let question = prompt_input("Enter the Querent's Question")?;
 
     let target_words = prompt_target_words();
 
-    ReadingParams {
+    Some(ReadingParams {
         name,
         date,
         time,
         city,
         question,
         target_words,
-    }
+    })
 }
 
 fn prompt_target_words() -> u32 {
-    let words_str: String = Input::new()
-        .with_prompt("Enter desired reading length in words (e.g., 500)")
-        .interact_text()
-        .unwrap();
-    words_str.parse().unwrap_or(500)
+    let words_str = prompt_input("Enter desired reading length in words (e.g., 500)")
+        .unwrap_or_else(|| "500".to_string());
+    words_str.trim().parse().unwrap_or(500)
 }
 
 fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
     println!("\n--- Fast-Track Existing Client ---");
-    let search_name: String = Input::new()
-        .with_prompt("Enter the Name of the client (or type 'cancel' to exit)")
-        .interact_text()
-        .unwrap();
+    let search_name = match prompt_input("Enter the Name of the client (or type 'cancel' to exit)")
+    {
+        Some(s) => s,
+        None => return Ok(None),
+    };
 
     if search_name.trim().eq_ignore_ascii_case("cancel") {
         println!("Action cancelled.");
@@ -732,10 +847,12 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
             );
         }
 
-        let selected_id_str: String = Input::new()
-            .with_prompt("Enter the specific ID of the correct match from this detailed list")
-            .interact_text()
-            .unwrap();
+        let selected_id_str = match prompt_input(
+            "Enter the specific ID of the correct match from this detailed list",
+        ) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
 
         match selected_id_str.trim().parse::<i64>() {
             Ok(id) => id,
@@ -774,10 +891,10 @@ fn fast_track_reading(conn: &Connection) -> Result<Option<ReadingParams>> {
                 .bold()
         );
 
-        let question: String = Input::new()
-            .with_prompt("Enter the Querent's NEW Question")
-            .interact_text()
-            .unwrap();
+        let question = match prompt_input("Enter the Querent's NEW Question") {
+            Some(q) => q,
+            None => return Ok(None),
+        };
 
         let target_words = prompt_target_words();
 
@@ -986,11 +1103,12 @@ async fn execute_reading_flow(
     let _ = tokio::fs::write("readings/last_prompt_log.txt", &combined_prompt).await;
 
     println!("Calling Gemini API...");
+    let model = api::get_gemini_model();
     let final_reading = match api::call_gemini_with_retry(
         &client,
         system_prompt.clone(),
         anonymized_user_prompt.clone(),
-        "gemini-3.1-flash-lite",
+        &model,
         2000,
     )
     .await
@@ -1097,32 +1215,35 @@ async fn main() {
             "🔮 Run a New Astrology Reading",
             "🔄 Run Reading for Existing Client",
             "📜 View All Client Records",
+            "📖 View Client Reading History",
             "🔍 Search Client by Name",
             "✏️ Edit a Client's Details",
             "❌ Delete a Client",
             "🚪 Exit Program",
         ];
 
-        let selection = Select::new()
-            .with_prompt("Main Menu - Select an Action")
-            .items(menu_options)
-            .default(0)
-            .interact()
-            .unwrap();
+        let selection = match prompt_select("Main Menu - Select an Action", menu_options, 0) {
+            Some(idx) => idx,
+            None => {
+                println!("\nExiting Program... Goodbye!");
+                break;
+            }
+        };
 
         match selection {
             0 => {
-                let params = launch_wizard();
-                execute_reading_flow(
-                    &mut conn,
-                    params.name,
-                    params.date,
-                    params.time,
-                    params.city,
-                    params.question,
-                    params.target_words,
-                )
-                .await;
+                if let Some(params) = launch_wizard() {
+                    execute_reading_flow(
+                        &mut conn,
+                        params.name,
+                        params.date,
+                        params.time,
+                        params.city,
+                        params.question,
+                        params.target_words,
+                    )
+                    .await;
+                }
                 wait_for_enter();
             }
             1 => {
@@ -1145,18 +1266,22 @@ async fn main() {
                 wait_for_enter();
             }
             3 => {
-                let _ = search_clients(&conn);
+                let _ = view_client_reading_history(&conn);
                 wait_for_enter();
             }
             4 => {
-                let _ = edit_client(&conn);
+                let _ = search_clients(&conn);
                 wait_for_enter();
             }
             5 => {
-                let _ = delete_client(&mut conn);
+                let _ = edit_client(&conn);
                 wait_for_enter();
             }
             6 => {
+                let _ = delete_client(&mut conn);
+                wait_for_enter();
+            }
+            7 => {
                 println!("Exiting Program... Goodbye!");
                 break;
             }

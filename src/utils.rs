@@ -56,9 +56,75 @@ pub fn escape_html(input: &str) -> String {
     result
 }
 
+pub fn format_reading_html(reading: &str) -> String {
+    let mut html = String::new();
+    let paragraphs: Vec<&str> = reading.split("\n\n").collect();
+
+    for para in paragraphs {
+        let trimmed = para.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if trimmed == "---" || trimmed == "***" {
+            html.push_str("<hr>\n");
+            continue;
+        }
+
+        let lines: Vec<&str> = trimmed.lines().collect();
+        let mut normal_lines = Vec::new();
+
+        for line in lines {
+            let l_trimmed = line.trim();
+            if let Some(title) = l_trimmed.strip_prefix("### ") {
+                if !normal_lines.is_empty() {
+                    let paragraph_body = normal_lines.join("<br>\n");
+                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
+                    normal_lines.clear();
+                }
+                html.push_str(&format!("<h3>{}</h3>\n", escape_html(title)));
+            } else if let Some(title) = l_trimmed.strip_prefix("## ") {
+                if !normal_lines.is_empty() {
+                    let paragraph_body = normal_lines.join("<br>\n");
+                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
+                    normal_lines.clear();
+                }
+                html.push_str(&format!("<h2>{}</h2>\n", escape_html(title)));
+            } else if let Some(title) = l_trimmed.strip_prefix("# ") {
+                if !normal_lines.is_empty() {
+                    let paragraph_body = normal_lines.join("<br>\n");
+                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
+                    normal_lines.clear();
+                }
+                html.push_str(&format!("<h1>{}</h1>\n", escape_html(title)));
+            } else if l_trimmed == "---" || l_trimmed == "***" {
+                if !normal_lines.is_empty() {
+                    let paragraph_body = normal_lines.join("<br>\n");
+                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
+                    normal_lines.clear();
+                }
+                html.push_str("<hr>\n");
+            } else {
+                normal_lines.push(escape_html(line.trim_end()));
+            }
+        }
+
+        if !normal_lines.is_empty() {
+            let paragraph_body = normal_lines.join("<br>\n");
+            html.push_str(&format!("<p>{}</p>\n", paragraph_body));
+        }
+    }
+
+    if html.is_empty() {
+        html.push_str(&format!("<p>{}</p>\n", escape_html(reading)));
+    }
+
+    html
+}
+
 pub fn generate_html_report(name: &str, reading: &str) -> String {
     let safe_name = escape_html(name);
-    let safe_reading = escape_html(reading);
+    let formatted_reading_body = format_reading_html(reading);
     let generated_at = chrono::Local::now()
         .format("%d %B %Y, %H:%M:%S %Z")
         .to_string();
@@ -71,24 +137,41 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         <style>\n\
         :root {{ --primary: #1e293b; --accent: #6366f1; --bg: #f8fafc; --card-bg: #ffffff; --text: #334155; --border: #e2e8f0; }}\n\
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 860px; margin: 40px auto; line-height: 1.8; color: var(--text); padding: 24px; background-color: var(--bg); }}\n\
+        .no-print {{ margin-bottom: 16px; text-align: right; }}\n\
+        .copy-btn {{ background-color: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background-color 0.2s ease; }}\n\
+        .copy-btn:hover {{ background-color: #4f46e5; }}\n\
         .header {{ background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; padding: 32px; border-radius: 12px 12px 0 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}\n\
         .header h1 {{ margin: 0 0 8px 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; color: #ffffff; }}\n\
         .header .meta {{ font-size: 14px; color: #c7d2fe; opacity: 0.9; }}\n\
-        .content {{ background: var(--card-bg); padding: 36px; border-radius: 0 0 12px 12px; border: 1px solid var(--border); border-top: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }}\n\
-        pre {{ white-space: pre-wrap; word-wrap: break-word; font-family: inherit; font-size: 16px; margin: 0; color: var(--text); }}\n\
+        .content {{ background: var(--card-bg); padding: 36px; border-radius: 0 0 12px 12px; border: 1px solid var(--border); border-top: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); font-size: 16px; color: var(--text); }}\n\
+        .content h1, .content h2, .content h3 {{ color: var(--primary); margin-top: 24px; margin-bottom: 12px; font-weight: 700; }}\n\
+        .content h1 {{ font-size: 22px; border-bottom: 2px solid var(--border); padding-bottom: 8px; }}\n\
+        .content h2 {{ font-size: 19px; }}\n\
+        .content h3 {{ font-size: 17px; }}\n\
+        .content p {{ margin: 0 0 16px 0; }}\n\
+        .content hr {{ border: none; border-top: 1px dashed var(--border); margin: 24px 0; }}\n\
         .footer {{ text-align: center; margin-top: 24px; font-size: 13px; color: #94a3b8; }}\n\
+        @media print {{\n\
+          body {{ background: #ffffff; padding: 0; margin: 0; max-width: 100%; }}\n\
+          .header {{ background: #1e1b4b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}\n\
+          .no-print {{ display: none !important; }}\n\
+          .content {{ box-shadow: none; border: none; padding: 20px 0; }}\n\
+        }}\n\
         @media (max-width: 640px) {{ body {{ padding: 12px; margin: 10px auto; }} .header, .content {{ padding: 20px; }} }}\n\
         </style>\n</head>\n<body>\n\
+        <div class=\"no-print\">\n\
+        <button class=\"copy-btn\" onclick=\"navigator.clipboard.writeText(document.querySelector('.content').innerText).then(() => alert('Reading copied to clipboard!'))\">📋 Copy Reading</button>\n\
+        </div>\n\
         <div class=\"header\">\n\
         <h1>Vedic Astrological Analysis</h1>\n\
         <div class=\"meta\">Querent: <strong>{}</strong> | Generated: {}</div>\n\
         </div>\n\
         <div class=\"content\">\n\
-        <pre>{}</pre>\n\
+        {}\n\
         </div>\n\
         <div class=\"footer\">Generated by Rust LLM Astrology Engine • Confidential</div>\n\
         </body>\n</html>",
-        safe_name, safe_name, generated_at, safe_reading
+        safe_name, safe_name, generated_at, formatted_reading_body
     )
 }
 
@@ -166,6 +249,18 @@ mod tests {
     }
 
     #[test]
+    fn test_format_reading_html() {
+        let raw = "## Overview\nThis is paragraph 1.\n\n### Planetary Alignments\nLine A\nLine B\n\n---\n\nParagraph 2 with <script>alert(1)</script>.";
+        let formatted = format_reading_html(raw);
+
+        assert!(formatted.contains("<h2>Overview</h2>"));
+        assert!(formatted.contains("<h3>Planetary Alignments</h3>"));
+        assert!(formatted.contains("<p>Line A<br>\nLine B</p>"));
+        assert!(formatted.contains("<hr>"));
+        assert!(formatted.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+    }
+
+    #[test]
     fn test_generate_html_report() {
         let html = generate_html_report("Jane & John <Doe>", "Line 1\nLine 2 & <More>");
         assert!(
@@ -174,6 +269,8 @@ mod tests {
             )
         );
         assert!(html.contains("Querent: <strong>Jane &amp; John &lt;Doe&gt;</strong>"));
-        assert!(html.contains("Line 1\nLine 2 &amp; &lt;More&gt;"));
+        assert!(html.contains("<p>Line 1<br>\nLine 2 &amp; &lt;More&gt;</p>"));
+        assert!(html.contains("@media print"));
+        assert!(html.contains("📋 Copy Reading"));
     }
 }
