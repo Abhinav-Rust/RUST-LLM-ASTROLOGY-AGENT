@@ -363,20 +363,21 @@ pub fn extract_target_date_from_text(text: &str, current_date: &str) -> String {
     fallback_date(current_date)
 }
 
+pub fn get_gemini_model() -> String {
+    env::var("GEMINI_MODEL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "gemini-3.1-flash-lite".to_string())
+}
+
 pub async fn extract_target_date(client: &Client, question: &str, current_date: &str) -> String {
     // [PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY]
     let system_prompt = "[PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY] Extract a target date in YYYY-MM-DD format.";
     let user_prompt = format!("Current Date: {}\nQuestion: {}", current_date, question);
+    let model = get_gemini_model();
 
-    match call_gemini_with_retry(
-        client,
-        system_prompt.to_string(),
-        user_prompt,
-        "gemini-3.1-flash-lite",
-        50,
-    )
-    .await
-    {
+    match call_gemini_with_retry(client, system_prompt.to_string(), user_prompt, &model, 50).await {
         Ok(text) => extract_target_date_from_text(&text, current_date),
         Err(_) => fallback_date(current_date),
     }
@@ -395,6 +396,31 @@ fn fallback_date(current_date: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_get_gemini_model_default_and_override() {
+        let original_model = env::var("GEMINI_MODEL").ok();
+
+        unsafe {
+            env::remove_var("GEMINI_MODEL");
+        }
+        assert_eq!(get_gemini_model(), "gemini-3.1-flash-lite");
+
+        unsafe {
+            env::set_var("GEMINI_MODEL", "gemini-1.5-pro");
+        }
+        assert_eq!(get_gemini_model(), "gemini-1.5-pro");
+
+        if let Some(m) = original_model {
+            unsafe {
+                env::set_var("GEMINI_MODEL", m);
+            }
+        } else {
+            unsafe {
+                env::remove_var("GEMINI_MODEL");
+            }
+        }
+    }
 
     #[test]
     fn test_parse_retry_seconds_from_message() {
