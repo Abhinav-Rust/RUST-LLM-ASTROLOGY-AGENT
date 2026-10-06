@@ -293,6 +293,31 @@ mod tests {
     }
 
     #[test]
+    fn test_get_client_readings() -> Result<()> {
+        let mut conn = init_test_db()?;
+
+        let (client_id, _) = manage_client(
+            &mut conn,
+            "Diana Prince",
+            "Metropolis",
+            "05/05/1985",
+            "12:00 PM",
+            "Date: 05/05/1985, Time: 12:00 PM, UTC Offset: -5.00",
+        )?;
+
+        save_reading(&conn, client_id, "Question 1", "Response 1")?;
+        save_reading(&conn, client_id, "Question 2", "Response 2")?;
+
+        let readings = get_client_readings(&conn, client_id)?;
+        assert_eq!(readings.len(), 2);
+        assert_eq!(readings[0].client_id, client_id);
+        assert_eq!(readings[0].question, "Question 2");
+        assert_eq!(readings[1].question, "Question 1");
+
+        Ok(())
+    }
+
+    #[test]
     fn test_search_clients_query() -> Result<()> {
         let mut conn = init_test_db()?;
 
@@ -394,6 +419,38 @@ fn save_reading(conn: &Connection, client_id: i64, question: &str, response: &st
     )?;
     Ok(())
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReadingRecord {
+    pub id: i64,
+    pub client_id: i64,
+    pub timestamp: String,
+    pub question: String,
+    pub full_ai_response: String,
+}
+
+impl ReadingRecord {
+    pub fn from_row(row: &rusqlite::Row<'_>) -> Result<Self> {
+        Ok(ReadingRecord {
+            id: row.get(0)?,
+            client_id: row.get(1)?,
+            timestamp: row.get(2)?,
+            question: row.get(3)?,
+            full_ai_response: row.get(4)?,
+        })
+    }
+}
+
+pub fn get_client_readings(conn: &Connection, client_id: i64) -> Result<Vec<ReadingRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, client_id, timestamp, question, full_ai_response FROM Readings WHERE client_id = ? ORDER BY timestamp DESC, id DESC",
+    )?;
+    let records = stmt
+        .query_map(params![client_id], ReadingRecord::from_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(records)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClientRecord {
     pub id: i64,
@@ -986,11 +1043,12 @@ async fn execute_reading_flow(
     let _ = tokio::fs::write("readings/last_prompt_log.txt", &combined_prompt).await;
 
     println!("Calling Gemini API...");
+    let model = api::get_gemini_model();
     let final_reading = match api::call_gemini_with_retry(
         &client,
         system_prompt.clone(),
         anonymized_user_prompt.clone(),
-        "gemini-3.1-flash-lite",
+        &model,
         2000,
     )
     .await
