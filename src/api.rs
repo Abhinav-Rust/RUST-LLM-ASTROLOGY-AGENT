@@ -363,20 +363,25 @@ pub fn extract_target_date_from_text(text: &str, current_date: &str) -> String {
     fallback_date(current_date)
 }
 
+pub fn get_gemini_model() -> String {
+    let model = env::var("GEMINI_MODEL")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if model.is_empty() {
+        "gemini-3.1-flash-lite".to_string()
+    } else {
+        model
+    }
+}
+
 pub async fn extract_target_date(client: &Client, question: &str, current_date: &str) -> String {
     // [PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY]
     let system_prompt = "[PROPRIETARY AGENT 1 PROMPT REDACTED FOR PUBLIC REPOSITORY] Extract a target date in YYYY-MM-DD format.";
     let user_prompt = format!("Current Date: {}\nQuestion: {}", current_date, question);
+    let model = get_gemini_model();
 
-    match call_gemini_with_retry(
-        client,
-        system_prompt.to_string(),
-        user_prompt,
-        "gemini-3.1-flash-lite",
-        50,
-    )
-    .await
-    {
+    match call_gemini_with_retry(client, system_prompt.to_string(), user_prompt, &model, 50).await {
         Ok(text) => extract_target_date_from_text(&text, current_date),
         Err(_) => fallback_date(current_date),
     }
@@ -539,6 +544,31 @@ mod tests {
                 assert!(msg.contains("GEMINI_API_KEY environment variable is not set or empty"));
             }
             other => panic!("Expected ServerError for missing API key, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_get_gemini_model() {
+        let original_model = env::var("GEMINI_MODEL").ok();
+
+        unsafe {
+            env::remove_var("GEMINI_MODEL");
+        }
+        assert_eq!(get_gemini_model(), "gemini-3.1-flash-lite");
+
+        unsafe {
+            env::set_var("GEMINI_MODEL", "gemini-1.5-pro");
+        }
+        assert_eq!(get_gemini_model(), "gemini-1.5-pro");
+
+        if let Some(val) = original_model {
+            unsafe {
+                env::set_var("GEMINI_MODEL", val);
+            }
+        } else {
+            unsafe {
+                env::remove_var("GEMINI_MODEL");
+            }
         }
     }
 
