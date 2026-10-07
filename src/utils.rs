@@ -56,6 +56,105 @@ pub fn escape_html(input: &str) -> String {
     result
 }
 
+pub fn format_inline_markdown(text: &str) -> String {
+    let escaped = escape_html(text);
+    let s = parse_bold(&escaped);
+    let s = parse_italic(&s, '*');
+    parse_italic(&s, '_')
+}
+
+fn parse_bold(input: &str) -> String {
+    let parts: Vec<&str> = input.split("**").collect();
+    if parts.len() < 3 {
+        return input.to_string();
+    }
+    let count = parts.len() - 1;
+    let pairs = count / 2;
+    if pairs == 0 {
+        return input.to_string();
+    }
+
+    let mut result = String::with_capacity(input.len());
+    for (i, part) in parts.iter().enumerate() {
+        if i > 0 && i <= pairs * 2 {
+            if i % 2 == 1 {
+                result.push_str("<strong>");
+                result.push_str(part);
+                result.push_str("</strong>");
+            } else {
+                result.push_str(part);
+            }
+        } else if i > pairs * 2 {
+            result.push_str("**");
+            result.push_str(part);
+        } else {
+            result.push_str(part);
+        }
+    }
+    result
+}
+
+fn parse_italic(input: &str, delimiter: char) -> String {
+    let delim_str = delimiter.to_string();
+    let parts: Vec<&str> = input.split(delimiter).collect();
+    if parts.len() < 3 {
+        return input.to_string();
+    }
+    let count = parts.len() - 1;
+    let pairs = count / 2;
+    if pairs == 0 {
+        return input.to_string();
+    }
+
+    let mut result = String::with_capacity(input.len());
+    for (i, part) in parts.iter().enumerate() {
+        if i > 0 && i <= pairs * 2 {
+            if i % 2 == 1 {
+                result.push_str("<em>");
+                result.push_str(part);
+                result.push_str("</em>");
+            } else {
+                result.push_str(part);
+            }
+        } else if i > pairs * 2 {
+            result.push_str(&delim_str);
+            result.push_str(part);
+        } else {
+            result.push_str(part);
+        }
+    }
+    result
+}
+
+fn strip_unordered_list_prefix(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("- ") {
+        Some(rest)
+    } else if let Some(rest) = trimmed.strip_prefix("* ") {
+        Some(rest)
+    } else {
+        None
+    }
+}
+
+fn strip_ordered_list_prefix(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let mut has_digits = false;
+    for (idx, c) in trimmed.char_indices() {
+        if c.is_ascii_digit() {
+            has_digits = true;
+        } else if c == '.' && has_digits {
+            if trimmed[idx + 1..].starts_with(' ') {
+                return Some(&trimmed[idx + 2..]);
+            }
+            return None;
+        } else {
+            return None;
+        }
+    }
+    None
+}
+
 pub fn format_reading_html(reading: &str) -> String {
     let mut html = String::new();
     let paragraphs: Vec<&str> = reading.split("\n\n").collect();
@@ -73,50 +172,80 @@ pub fn format_reading_html(reading: &str) -> String {
 
         let lines: Vec<&str> = trimmed.lines().collect();
         let mut normal_lines = Vec::new();
+        let mut in_ul = false;
+        let mut in_ol = false;
+
+        let flush_normal = |lines: &mut Vec<String>, html: &mut String| {
+            if !lines.is_empty() {
+                let paragraph_body = lines.join("<br>\n");
+                html.push_str(&format!("<p>{}</p>\n", paragraph_body));
+                lines.clear();
+            }
+        };
+
+        let close_lists = |in_ul: &mut bool, in_ol: &mut bool, html: &mut String| {
+            if *in_ul {
+                html.push_str("</ul>\n");
+                *in_ul = false;
+            }
+            if *in_ol {
+                html.push_str("</ol>\n");
+                *in_ol = false;
+            }
+        };
 
         for line in lines {
             let l_trimmed = line.trim();
             if let Some(title) = l_trimmed.strip_prefix("### ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h3>{}</h3>\n", escape_html(title)));
+                flush_normal(&mut normal_lines, &mut html);
+                close_lists(&mut in_ul, &mut in_ol, &mut html);
+                html.push_str(&format!("<h3>{}</h3>\n", format_inline_markdown(title)));
             } else if let Some(title) = l_trimmed.strip_prefix("## ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h2>{}</h2>\n", escape_html(title)));
+                flush_normal(&mut normal_lines, &mut html);
+                close_lists(&mut in_ul, &mut in_ol, &mut html);
+                html.push_str(&format!("<h2>{}</h2>\n", format_inline_markdown(title)));
             } else if let Some(title) = l_trimmed.strip_prefix("# ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h1>{}</h1>\n", escape_html(title)));
+                flush_normal(&mut normal_lines, &mut html);
+                close_lists(&mut in_ul, &mut in_ol, &mut html);
+                html.push_str(&format!("<h1>{}</h1>\n", format_inline_markdown(title)));
             } else if l_trimmed == "---" || l_trimmed == "***" {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
+                flush_normal(&mut normal_lines, &mut html);
+                close_lists(&mut in_ul, &mut in_ol, &mut html);
                 html.push_str("<hr>\n");
+            } else if let Some(item) = strip_unordered_list_prefix(l_trimmed) {
+                flush_normal(&mut normal_lines, &mut html);
+                if in_ol {
+                    html.push_str("</ol>\n");
+                    in_ol = false;
+                }
+                if !in_ul {
+                    html.push_str("<ul>\n");
+                    in_ul = true;
+                }
+                html.push_str(&format!("<li>{}</li>\n", format_inline_markdown(item)));
+            } else if let Some(item) = strip_ordered_list_prefix(l_trimmed) {
+                flush_normal(&mut normal_lines, &mut html);
+                if in_ul {
+                    html.push_str("</ul>\n");
+                    in_ul = false;
+                }
+                if !in_ol {
+                    html.push_str("<ol>\n");
+                    in_ol = true;
+                }
+                html.push_str(&format!("<li>{}</li>\n", format_inline_markdown(item)));
             } else {
-                normal_lines.push(escape_html(line.trim_end()));
+                close_lists(&mut in_ul, &mut in_ol, &mut html);
+                normal_lines.push(format_inline_markdown(line.trim_end()));
             }
         }
 
-        if !normal_lines.is_empty() {
-            let paragraph_body = normal_lines.join("<br>\n");
-            html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-        }
+        flush_normal(&mut normal_lines, &mut html);
+        close_lists(&mut in_ul, &mut in_ol, &mut html);
     }
 
     if html.is_empty() {
-        html.push_str(&format!("<p>{}</p>\n", escape_html(reading)));
+        html.push_str(&format!("<p>{}</p>\n", format_inline_markdown(reading)));
     }
 
     html
@@ -149,6 +278,9 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         .content h2 {{ font-size: 19px; }}\n\
         .content h3 {{ font-size: 17px; }}\n\
         .content p {{ margin: 0 0 16px 0; }}\n\
+        .content ul, .content ol {{ margin: 0 0 16px 24px; padding: 0; }}\n\
+        .content li {{ margin-bottom: 6px; }}\n\
+        .content strong {{ color: var(--primary); font-weight: 600; }}\n\
         .content hr {{ border: none; border-top: 1px dashed var(--border); margin: 24px 0; }}\n\
         .footer {{ text-align: center; margin-top: 24px; font-size: 13px; color: #94a3b8; }}\n\
         @media print {{\n\
@@ -249,13 +381,31 @@ mod tests {
     }
 
     #[test]
+    fn test_format_inline_markdown() {
+        assert_eq!(
+            format_inline_markdown("Hello **World** and *Universe*"),
+            "Hello <strong>World</strong> and <em>Universe</em>"
+        );
+        assert_eq!(
+            format_inline_markdown("Item with _italic_ and <script>alert('x')</script>"),
+            "Item with <em>italic</em> and &lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;"
+        );
+    }
+
+    #[test]
     fn test_format_reading_html() {
-        let raw = "## Overview\nThis is paragraph 1.\n\n### Planetary Alignments\nLine A\nLine B\n\n---\n\nParagraph 2 with <script>alert(1)</script>.";
+        let raw = "## Overview\nThis is paragraph 1 with **bold**.\n\n### Key Alignments\n- Bullet 1\n- Bullet 2 with *emphasis*\n\n1. First step\n2. Second step\n\n---\n\nParagraph 2 with <script>alert(1)</script>.";
         let formatted = format_reading_html(raw);
 
         assert!(formatted.contains("<h2>Overview</h2>"));
-        assert!(formatted.contains("<h3>Planetary Alignments</h3>"));
-        assert!(formatted.contains("<p>Line A<br>\nLine B</p>"));
+        assert!(formatted.contains("This is paragraph 1 with <strong>bold</strong>."));
+        assert!(formatted.contains("<h3>Key Alignments</h3>"));
+        assert!(
+            formatted.contains(
+                "<ul>\n<li>Bullet 1</li>\n<li>Bullet 2 with <em>emphasis</em></li>\n</ul>"
+            )
+        );
+        assert!(formatted.contains("<ol>\n<li>First step</li>\n<li>Second step</li>\n</ol>"));
         assert!(formatted.contains("<hr>"));
         assert!(formatted.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
     }

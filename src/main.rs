@@ -111,10 +111,13 @@ fn view_client_reading_history(conn: &Connection) -> Result<()> {
         for c in &clients {
             println!("  [{}] {} ({})", c.id, c.name, c.city);
         }
-        let id_str: String = Input::new()
-            .with_prompt("Enter the exact ID of the client")
-            .interact_text()
-            .unwrap();
+        let id_str = match prompt_input("Enter the exact ID of the client") {
+            Some(s) => s,
+            None => {
+                println!("Action cancelled.");
+                return Ok(());
+            }
+        };
         let target_id = id_str.trim().parse::<i64>().unwrap_or(-1);
         match clients.iter().find(|c| c.id == target_id) {
             Some(c) => c,
@@ -149,6 +152,54 @@ fn view_client_reading_history(conn: &Connection) -> Result<()> {
         println!("Question: {}", style(&r.question).yellow());
         println!("Response:\n{}", r.full_ai_response);
         println!("{}", "-".repeat(60));
+    }
+
+    if prompt_confirm(
+        "Would you like to export an HTML report for one of these historical readings?",
+        false,
+    )
+    .unwrap_or(false)
+    {
+        let reading_num_str =
+            match prompt_input(&format!("Enter Reading # to export (1-{})", readings.len())) {
+                Some(s) => s,
+                None => return Ok(()),
+            };
+        if let Ok(num) = reading_num_str.trim().parse::<usize>() {
+            if num >= 1 && num <= readings.len() {
+                let reading_idx = readings.len() - num;
+                let target_reading = &readings[reading_idx];
+                let html_content = utils::generate_html_report(
+                    &target_client.name,
+                    &target_reading.full_ai_response,
+                );
+                let clean_name = utils::sanitize_filename(&target_client.name);
+                let date_suffix = chrono::Local::now().format("%Y%m%d_%H%M%S");
+                let filename = format!("{}_history_{}.html", clean_name, date_suffix);
+                let mut path = std::env::current_dir().unwrap_or_default();
+                path.push("readings");
+                let _ = std::fs::create_dir_all(&path);
+                path.push(&filename);
+                if std::fs::write(&path, html_content).is_ok() {
+                    println!("Exported HTML report to: {}", path.display());
+                    if let Err(e) = open::that(&path) {
+                        println!(
+                            "{}",
+                            style(format!(
+                                "[!] Warning: Could not open HTML report automatically ({}) at {}",
+                                e,
+                                path.display()
+                            ))
+                            .yellow()
+                        );
+                    }
+                }
+            } else {
+                println!("{}", style("Invalid Reading #.").red());
+            }
+        } else {
+            println!("{}", style("Invalid number format.").red());
+        }
     }
 
     Ok(())
@@ -368,7 +419,11 @@ mod tests {
         )?;
         assert_eq!(count_readings, 1);
 
-        delete_client_record(&mut conn, client_id)?;
+        let rows_deleted = delete_client_record(&mut conn, client_id)?;
+        assert_eq!(rows_deleted, 1);
+
+        let rows_deleted_missing = delete_client_record(&mut conn, 9999)?;
+        assert_eq!(rows_deleted_missing, 0);
 
         let count_clients_after: i64 = conn.query_row(
             "SELECT COUNT(*) FROM Clients WHERE id = ?",
@@ -383,6 +438,19 @@ mod tests {
             |r| r.get(0),
         )?;
         assert_eq!(count_readings_after, 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_edit_nonexistent_client_returns_zero_rows() -> Result<()> {
+        let conn = init_test_db()?;
+
+        let rows_updated = conn.execute(
+            "UPDATE Clients SET name = ? WHERE id = ?",
+            params!["New Name", 9999],
+        )?;
+        assert_eq!(rows_updated, 0);
 
         Ok(())
     }
@@ -626,7 +694,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
         None => return Ok(()),
     };
 
-    match selection {
+    let rows_updated = match selection {
         0 => {
             let new_name = match prompt_input("Enter new Name") {
                 Some(s) => s,
@@ -635,8 +703,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
             conn.execute(
                 "UPDATE Clients SET name = ? WHERE id = ?",
                 params![new_name, id],
-            )?;
-            println!("Client Name updated successfully.");
+            )?
         }
         1 => {
             let new_city = match prompt_input("Enter new City") {
@@ -646,8 +713,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
             conn.execute(
                 "UPDATE Clients SET city = ? WHERE id = ?",
                 params![new_city, id],
-            )?;
-            println!("Client City updated successfully.");
+            )?
         }
         2 => {
             let new_dob = loop {
@@ -669,8 +735,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
             conn.execute(
                 "UPDATE Clients SET dob = ? WHERE id = ?",
                 params![new_dob, id],
-            )?;
-            println!("Client DOB updated successfully.");
+            )?
         }
         3 => {
             let new_time = loop {
@@ -693,8 +758,7 @@ fn edit_client(conn: &Connection) -> Result<()> {
             conn.execute(
                 "UPDATE Clients SET time = ? WHERE id = ?",
                 params![new_time, id],
-            )?;
-            println!("Client Time of Birth updated successfully.");
+            )?
         }
         4 => {
             let status_options = &["Active", "Refused"];
@@ -706,20 +770,25 @@ fn edit_client(conn: &Connection) -> Result<()> {
             conn.execute(
                 "UPDATE Clients SET status = ? WHERE id = ?",
                 params![new_status, id],
-            )?;
-            println!("Client Status updated to '{}' successfully.", new_status);
+            )?
         }
         _ => unreachable!(),
+    };
+
+    if rows_updated == 0 {
+        println!("{}", style("Client ID not found.").red());
+    } else {
+        println!("Client details updated successfully.");
     }
     Ok(())
 }
 
-fn delete_client_record(conn: &mut Connection, id: i64) -> Result<()> {
+fn delete_client_record(conn: &mut Connection, id: i64) -> Result<usize> {
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
-    tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+    let rows = tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
     tx.commit()?;
-    Ok(())
+    Ok(rows)
 }
 
 fn delete_client(conn: &mut Connection) -> Result<()> {
@@ -741,8 +810,12 @@ fn delete_client(conn: &mut Connection) -> Result<()> {
     .unwrap_or(false);
 
     if confirmed {
-        delete_client_record(conn, id)?;
-        println!("Client and associated records deleted permanently.");
+        let rows = delete_client_record(conn, id)?;
+        if rows > 0 {
+            println!("Client and associated records deleted permanently.");
+        } else {
+            println!("{}", style("Client ID not found.").red());
+        }
     } else {
         println!("Deletion cancelled.");
     }
@@ -1004,13 +1077,7 @@ async fn execute_reading_flow(
         "Whole Sign (Required for Standard Vedic)",
     ];
 
-    // Added fully qualified dialoguer just in case, though Select is imported.
-    let house_selection = Select::new()
-        .with_prompt("Select House System")
-        .items(house_options)
-        .default(1) // Default to Whole Sign
-        .interact()
-        .unwrap_or(1);
+    let house_selection = prompt_select("Select House System", house_options, 1).unwrap_or(1);
 
     let selected_house_system = match house_selection {
         0 => math::HouseSystem::Placidus,
