@@ -56,6 +56,61 @@ pub fn escape_html(input: &str) -> String {
     result
 }
 
+fn format_inline_markdown(line: &str) -> String {
+    let escaped = escape_html(line);
+    let mut result = String::with_capacity(escaped.len());
+    let parts: Vec<&str> = escaped.split("**").collect();
+    if parts.len() > 1 {
+        for (i, part) in parts.iter().enumerate() {
+            if i % 2 == 1 {
+                result.push_str("<strong>");
+                result.push_str(part);
+                result.push_str("</strong>");
+            } else {
+                result.push_str(part);
+            }
+        }
+    } else {
+        result.push_str(&escaped);
+    }
+
+    if result.contains('*') {
+        let italic_parts: Vec<&str> = result.split('*').collect();
+        if italic_parts.len() > 1 && italic_parts.len() % 2 == 1 {
+            let mut it_res = String::with_capacity(result.len());
+            for (i, part) in italic_parts.iter().enumerate() {
+                if i % 2 == 1 {
+                    it_res.push_str("<em>");
+                    it_res.push_str(part);
+                    it_res.push_str("</em>");
+                } else {
+                    it_res.push_str(part);
+                }
+            }
+            result = it_res;
+        }
+    }
+
+    result
+}
+
+fn is_ordered_list_item(s: &str) -> bool {
+    if let Some(pos) = s.find(". ") {
+        let prefix = &s[..pos];
+        !prefix.is_empty() && prefix.chars().all(|c| c.is_ascii_digit())
+    } else {
+        false
+    }
+}
+
+fn strip_ordered_prefix(s: &str) -> &str {
+    if let Some(pos) = s.find(". ") {
+        &s[pos + 2..]
+    } else {
+        s
+    }
+}
+
 pub fn format_reading_html(reading: &str) -> String {
     let mut html = String::new();
     let paragraphs: Vec<&str> = reading.split("\n\n").collect();
@@ -73,50 +128,84 @@ pub fn format_reading_html(reading: &str) -> String {
 
         let lines: Vec<&str> = trimmed.lines().collect();
         let mut normal_lines = Vec::new();
+        let mut in_unordered_list = false;
+        let mut in_ordered_list = false;
+
+        let flush_normal = |normal_lines: &mut Vec<String>, html: &mut String| {
+            if !normal_lines.is_empty() {
+                let paragraph_body = normal_lines.join("<br>\n");
+                html.push_str(&format!("<p>{}</p>\n", paragraph_body));
+                normal_lines.clear();
+            }
+        };
+
+        let flush_list = |in_ul: &mut bool, in_ol: &mut bool, html: &mut String| {
+            if *in_ul {
+                html.push_str("</ul>\n");
+                *in_ul = false;
+            }
+            if *in_ol {
+                html.push_str("</ol>\n");
+                *in_ol = false;
+            }
+        };
 
         for line in lines {
             let l_trimmed = line.trim();
             if let Some(title) = l_trimmed.strip_prefix("### ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h3>{}</h3>\n", escape_html(title)));
+                flush_normal(&mut normal_lines, &mut html);
+                flush_list(&mut in_unordered_list, &mut in_ordered_list, &mut html);
+                html.push_str(&format!("<h3>{}</h3>\n", format_inline_markdown(title)));
             } else if let Some(title) = l_trimmed.strip_prefix("## ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h2>{}</h2>\n", escape_html(title)));
+                flush_normal(&mut normal_lines, &mut html);
+                flush_list(&mut in_unordered_list, &mut in_ordered_list, &mut html);
+                html.push_str(&format!("<h2>{}</h2>\n", format_inline_markdown(title)));
             } else if let Some(title) = l_trimmed.strip_prefix("# ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h1>{}</h1>\n", escape_html(title)));
+                flush_normal(&mut normal_lines, &mut html);
+                flush_list(&mut in_unordered_list, &mut in_ordered_list, &mut html);
+                html.push_str(&format!("<h1>{}</h1>\n", format_inline_markdown(title)));
             } else if l_trimmed == "---" || l_trimmed == "***" {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
+                flush_normal(&mut normal_lines, &mut html);
+                flush_list(&mut in_unordered_list, &mut in_ordered_list, &mut html);
                 html.push_str("<hr>\n");
+            } else if let Some(item) = l_trimmed
+                .strip_prefix("- ")
+                .or_else(|| l_trimmed.strip_prefix("* "))
+            {
+                flush_normal(&mut normal_lines, &mut html);
+                if in_ordered_list {
+                    html.push_str("</ol>\n");
+                    in_ordered_list = false;
+                }
+                if !in_unordered_list {
+                    html.push_str("<ul>\n");
+                    in_unordered_list = true;
+                }
+                html.push_str(&format!("<li>{}</li>\n", format_inline_markdown(item)));
+            } else if is_ordered_list_item(l_trimmed) {
+                let item = strip_ordered_prefix(l_trimmed);
+                flush_normal(&mut normal_lines, &mut html);
+                if in_unordered_list {
+                    html.push_str("</ul>\n");
+                    in_unordered_list = false;
+                }
+                if !in_ordered_list {
+                    html.push_str("<ol>\n");
+                    in_ordered_list = true;
+                }
+                html.push_str(&format!("<li>{}</li>\n", format_inline_markdown(item)));
             } else {
-                normal_lines.push(escape_html(line.trim_end()));
+                flush_list(&mut in_unordered_list, &mut in_ordered_list, &mut html);
+                normal_lines.push(format_inline_markdown(l_trimmed));
             }
         }
 
-        if !normal_lines.is_empty() {
-            let paragraph_body = normal_lines.join("<br>\n");
-            html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-        }
+        flush_normal(&mut normal_lines, &mut html);
+        flush_list(&mut in_unordered_list, &mut in_ordered_list, &mut html);
     }
 
     if html.is_empty() {
-        html.push_str(&format!("<p>{}</p>\n", escape_html(reading)));
+        html.push_str(&format!("<p>{}</p>\n", format_inline_markdown(reading)));
     }
 
     html
@@ -137,9 +226,12 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         <style>\n\
         :root {{ --primary: #1e293b; --accent: #6366f1; --bg: #f8fafc; --card-bg: #ffffff; --text: #334155; --border: #e2e8f0; }}\n\
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 860px; margin: 40px auto; line-height: 1.8; color: var(--text); padding: 24px; background-color: var(--bg); }}\n\
-        .no-print {{ margin-bottom: 16px; text-align: right; }}\n\
-        .copy-btn {{ background-color: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background-color 0.2s ease; }}\n\
+        .no-print {{ margin-bottom: 16px; text-align: right; display: flex; gap: 8px; justify-content: flex-end; }}\n\
+        .action-btn {{ border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background-color 0.2s ease; }}\n\
+        .copy-btn {{ background-color: var(--accent); color: white; }}\n\
         .copy-btn:hover {{ background-color: #4f46e5; }}\n\
+        .print-btn {{ background-color: #3b82f6; color: white; }}\n\
+        .print-btn:hover {{ background-color: #2563eb; }}\n\
         .header {{ background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; padding: 32px; border-radius: 12px 12px 0 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}\n\
         .header h1 {{ margin: 0 0 8px 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; color: #ffffff; }}\n\
         .header .meta {{ font-size: 14px; color: #c7d2fe; opacity: 0.9; }}\n\
@@ -149,6 +241,8 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         .content h2 {{ font-size: 19px; }}\n\
         .content h3 {{ font-size: 17px; }}\n\
         .content p {{ margin: 0 0 16px 0; }}\n\
+        .content ul, .content ol {{ margin: 0 0 16px 24px; padding: 0; }}\n\
+        .content li {{ margin-bottom: 4px; }}\n\
         .content hr {{ border: none; border-top: 1px dashed var(--border); margin: 24px 0; }}\n\
         .footer {{ text-align: center; margin-top: 24px; font-size: 13px; color: #94a3b8; }}\n\
         @media print {{\n\
@@ -160,7 +254,8 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         @media (max-width: 640px) {{ body {{ padding: 12px; margin: 10px auto; }} .header, .content {{ padding: 20px; }} }}\n\
         </style>\n</head>\n<body>\n\
         <div class=\"no-print\">\n\
-        <button class=\"copy-btn\" onclick=\"navigator.clipboard.writeText(document.querySelector('.content').innerText).then(() => alert('Reading copied to clipboard!'))\">📋 Copy Reading</button>\n\
+        <button class=\"action-btn copy-btn\" onclick=\"navigator.clipboard.writeText(document.querySelector('.content').innerText).then(() => alert('Reading copied to clipboard!'))\">📋 Copy Reading</button>\n\
+        <button class=\"action-btn print-btn\" onclick=\"window.print()\">🖨️ Print / Save PDF</button>\n\
         </div>\n\
         <div class=\"header\">\n\
         <h1>Vedic Astrological Analysis</h1>\n\
@@ -250,12 +345,15 @@ mod tests {
 
     #[test]
     fn test_format_reading_html() {
-        let raw = "## Overview\nThis is paragraph 1.\n\n### Planetary Alignments\nLine A\nLine B\n\n---\n\nParagraph 2 with <script>alert(1)</script>.";
+        let raw = "## Overview\nThis is **bold** and *italic* text.\n\n### Planetary Alignments\n- Sun in Aries\n- Moon in Taurus\n\n1. First step\n2. Second step\n\n---\n\nParagraph 2 with <script>alert(1)</script>.";
         let formatted = format_reading_html(raw);
 
         assert!(formatted.contains("<h2>Overview</h2>"));
+        assert!(formatted.contains("<strong>bold</strong>"));
+        assert!(formatted.contains("<em>italic</em>"));
         assert!(formatted.contains("<h3>Planetary Alignments</h3>"));
-        assert!(formatted.contains("<p>Line A<br>\nLine B</p>"));
+        assert!(formatted.contains("<ul>\n<li>Sun in Aries</li>\n<li>Moon in Taurus</li>\n</ul>"));
+        assert!(formatted.contains("<ol>\n<li>First step</li>\n<li>Second step</li>\n</ol>"));
         assert!(formatted.contains("<hr>"));
         assert!(formatted.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
     }
@@ -272,5 +370,6 @@ mod tests {
         assert!(html.contains("<p>Line 1<br>\nLine 2 &amp; &lt;More&gt;</p>"));
         assert!(html.contains("@media print"));
         assert!(html.contains("📋 Copy Reading"));
+        assert!(html.contains("🖨️ Print / Save PDF"));
     }
 }
