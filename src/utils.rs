@@ -56,6 +56,60 @@ pub fn escape_html(input: &str) -> String {
     result
 }
 
+fn format_inline_markdown(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '*' {
+            if chars.peek() == Some(&'*') {
+                chars.next(); // consume second '*'
+                let remaining: String = chars.by_ref().collect();
+                if let Some(end_idx) = remaining.find("**") {
+                    let inside = &remaining[..end_idx];
+                    let rest = &remaining[end_idx + 2..];
+                    result.push_str("<strong>");
+                    result.push_str(&format_inline_markdown(inside));
+                    result.push_str("</strong>");
+                    result.push_str(&format_inline_markdown(rest));
+                    return result;
+                } else {
+                    result.push_str("**");
+                    result.push_str(&remaining);
+                    return result;
+                }
+            } else {
+                let remaining: String = chars.by_ref().collect();
+                if let Some(end_idx) = remaining.find('*') {
+                    let inside = &remaining[..end_idx];
+                    let rest = &remaining[end_idx + 1..];
+                    result.push_str("<em>");
+                    result.push_str(&format_inline_markdown(inside));
+                    result.push_str("</em>");
+                    result.push_str(&format_inline_markdown(rest));
+                    return result;
+                } else {
+                    result.push('*');
+                    result.push_str(&remaining);
+                    return result;
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+fn is_ordered_list_line(s: &str) -> bool {
+    let mut parts = s.splitn(2, '.');
+    if let (Some(num_str), Some(rest)) = (parts.next(), parts.next()) {
+        !num_str.is_empty() && num_str.chars().all(|c| c.is_ascii_digit()) && rest.starts_with(' ')
+    } else {
+        false
+    }
+}
+
 pub fn format_reading_html(reading: &str) -> String {
     let mut html = String::new();
     let paragraphs: Vec<&str> = reading.split("\n\n").collect();
@@ -73,50 +127,86 @@ pub fn format_reading_html(reading: &str) -> String {
 
         let lines: Vec<&str> = trimmed.lines().collect();
         let mut normal_lines = Vec::new();
+        let mut list_items = Vec::new();
+        let mut is_ordered_list = false;
+
+        let flush_normal = |normal_lines: &mut Vec<String>, html: &mut String| {
+            if !normal_lines.is_empty() {
+                let paragraph_body = normal_lines.join("<br>\n");
+                html.push_str(&format!("<p>{}</p>\n", paragraph_body));
+                normal_lines.clear();
+            }
+        };
+
+        let flush_list = |list_items: &mut Vec<String>, is_ordered: bool, html: &mut String| {
+            if !list_items.is_empty() {
+                let tag = if is_ordered { "ol" } else { "ul" };
+                html.push_str(&format!("<{}>\n", tag));
+                for item in list_items.drain(..) {
+                    html.push_str(&format!("  <li>{}</li>\n", item));
+                }
+                html.push_str(&format!("</{}>\n", tag));
+            }
+        };
 
         for line in lines {
             let l_trimmed = line.trim();
             if let Some(title) = l_trimmed.strip_prefix("### ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h3>{}</h3>\n", escape_html(title)));
+                flush_list(&mut list_items, is_ordered_list, &mut html);
+                flush_normal(&mut normal_lines, &mut html);
+                let formatted_title = format_inline_markdown(&escape_html(title));
+                html.push_str(&format!("<h3>{}</h3>\n", formatted_title));
             } else if let Some(title) = l_trimmed.strip_prefix("## ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h2>{}</h2>\n", escape_html(title)));
+                flush_list(&mut list_items, is_ordered_list, &mut html);
+                flush_normal(&mut normal_lines, &mut html);
+                let formatted_title = format_inline_markdown(&escape_html(title));
+                html.push_str(&format!("<h2>{}</h2>\n", formatted_title));
             } else if let Some(title) = l_trimmed.strip_prefix("# ") {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
-                html.push_str(&format!("<h1>{}</h1>\n", escape_html(title)));
+                flush_list(&mut list_items, is_ordered_list, &mut html);
+                flush_normal(&mut normal_lines, &mut html);
+                let formatted_title = format_inline_markdown(&escape_html(title));
+                html.push_str(&format!("<h1>{}</h1>\n", formatted_title));
             } else if l_trimmed == "---" || l_trimmed == "***" {
-                if !normal_lines.is_empty() {
-                    let paragraph_body = normal_lines.join("<br>\n");
-                    html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-                    normal_lines.clear();
-                }
+                flush_list(&mut list_items, is_ordered_list, &mut html);
+                flush_normal(&mut normal_lines, &mut html);
                 html.push_str("<hr>\n");
+            } else if let Some(item) = l_trimmed
+                .strip_prefix("- ")
+                .or_else(|| l_trimmed.strip_prefix("* "))
+            {
+                flush_normal(&mut normal_lines, &mut html);
+                if is_ordered_list {
+                    flush_list(&mut list_items, true, &mut html);
+                    is_ordered_list = false;
+                }
+                let formatted_item = format_inline_markdown(&escape_html(item));
+                list_items.push(formatted_item);
+            } else if is_ordered_list_line(l_trimmed) {
+                flush_normal(&mut normal_lines, &mut html);
+                if !is_ordered_list {
+                    flush_list(&mut list_items, false, &mut html);
+                    is_ordered_list = true;
+                }
+                let item_text = l_trimmed
+                    .split_once('.')
+                    .map(|x| x.1.trim())
+                    .unwrap_or(l_trimmed);
+                let formatted_item = format_inline_markdown(&escape_html(item_text));
+                list_items.push(formatted_item);
             } else {
-                normal_lines.push(escape_html(line.trim_end()));
+                flush_list(&mut list_items, is_ordered_list, &mut html);
+                let formatted_line = format_inline_markdown(&escape_html(line.trim_end()));
+                normal_lines.push(formatted_line);
             }
         }
 
-        if !normal_lines.is_empty() {
-            let paragraph_body = normal_lines.join("<br>\n");
-            html.push_str(&format!("<p>{}</p>\n", paragraph_body));
-        }
+        flush_list(&mut list_items, is_ordered_list, &mut html);
+        flush_normal(&mut normal_lines, &mut html);
     }
 
     if html.is_empty() {
-        html.push_str(&format!("<p>{}</p>\n", escape_html(reading)));
+        let formatted = format_inline_markdown(&escape_html(reading));
+        html.push_str(&format!("<p>{}</p>\n", formatted));
     }
 
     html
@@ -137,9 +227,11 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         <style>\n\
         :root {{ --primary: #1e293b; --accent: #6366f1; --bg: #f8fafc; --card-bg: #ffffff; --text: #334155; --border: #e2e8f0; }}\n\
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 860px; margin: 40px auto; line-height: 1.8; color: var(--text); padding: 24px; background-color: var(--bg); }}\n\
-        .no-print {{ margin-bottom: 16px; text-align: right; }}\n\
+        .no-print {{ margin-bottom: 16px; text-align: right; display: flex; gap: 8px; justify-content: flex-end; }}\n\
         .copy-btn {{ background-color: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background-color 0.2s ease; }}\n\
         .copy-btn:hover {{ background-color: #4f46e5; }}\n\
+        .print-btn {{ background-color: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background-color 0.2s ease; }}\n\
+        .print-btn:hover {{ background-color: #334155; }}\n\
         .header {{ background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; padding: 32px; border-radius: 12px 12px 0 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}\n\
         .header h1 {{ margin: 0 0 8px 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; color: #ffffff; }}\n\
         .header .meta {{ font-size: 14px; color: #c7d2fe; opacity: 0.9; }}\n\
@@ -149,6 +241,8 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         .content h2 {{ font-size: 19px; }}\n\
         .content h3 {{ font-size: 17px; }}\n\
         .content p {{ margin: 0 0 16px 0; }}\n\
+        .content ul, .content ol {{ margin: 0 0 16px 24px; padding: 0; }}\n\
+        .content li {{ margin-bottom: 6px; }}\n\
         .content hr {{ border: none; border-top: 1px dashed var(--border); margin: 24px 0; }}\n\
         .footer {{ text-align: center; margin-top: 24px; font-size: 13px; color: #94a3b8; }}\n\
         @media print {{\n\
@@ -161,6 +255,7 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         </style>\n</head>\n<body>\n\
         <div class=\"no-print\">\n\
         <button class=\"copy-btn\" onclick=\"navigator.clipboard.writeText(document.querySelector('.content').innerText).then(() => alert('Reading copied to clipboard!'))\">📋 Copy Reading</button>\n\
+        <button class=\"print-btn\" onclick=\"window.print()\">🖨️ Print / Save PDF</button>\n\
         </div>\n\
         <div class=\"header\">\n\
         <h1>Vedic Astrological Analysis</h1>\n\
@@ -250,12 +345,20 @@ mod tests {
 
     #[test]
     fn test_format_reading_html() {
-        let raw = "## Overview\nThis is paragraph 1.\n\n### Planetary Alignments\nLine A\nLine B\n\n---\n\nParagraph 2 with <script>alert(1)</script>.";
+        let raw = "## Overview\nThis is **bold** and *italic* text.\n\n### Planetary Alignments\n- Sun in Aries\n- Moon in Taurus\n\n1. First Prediction\n2. Second Prediction\n\n---\n\nParagraph 2 with <script>alert(1)</script>.";
         let formatted = format_reading_html(raw);
 
         assert!(formatted.contains("<h2>Overview</h2>"));
+        assert!(formatted.contains("<strong>bold</strong>"));
+        assert!(formatted.contains("<em>italic</em>"));
         assert!(formatted.contains("<h3>Planetary Alignments</h3>"));
-        assert!(formatted.contains("<p>Line A<br>\nLine B</p>"));
+        assert!(
+            formatted.contains("<ul>\n  <li>Sun in Aries</li>\n  <li>Moon in Taurus</li>\n</ul>")
+        );
+        assert!(
+            formatted
+                .contains("<ol>\n  <li>First Prediction</li>\n  <li>Second Prediction</li>\n</ol>")
+        );
         assert!(formatted.contains("<hr>"));
         assert!(formatted.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
     }
@@ -272,5 +375,6 @@ mod tests {
         assert!(html.contains("<p>Line 1<br>\nLine 2 &amp; &lt;More&gt;</p>"));
         assert!(html.contains("@media print"));
         assert!(html.contains("📋 Copy Reading"));
+        assert!(html.contains("🖨️ Print / Save PDF"));
     }
 }

@@ -111,10 +111,13 @@ fn view_client_reading_history(conn: &Connection) -> Result<()> {
         for c in &clients {
             println!("  [{}] {} ({})", c.id, c.name, c.city);
         }
-        let id_str: String = Input::new()
-            .with_prompt("Enter the exact ID of the client")
-            .interact_text()
-            .unwrap();
+        let id_str = match prompt_input("Enter the exact ID of the client") {
+            Some(s) => s,
+            None => {
+                println!("Action cancelled.");
+                return Ok(());
+            }
+        };
         let target_id = id_str.trim().parse::<i64>().unwrap_or(-1);
         match clients.iter().find(|c| c.id == target_id) {
             Some(c) => c,
@@ -265,6 +268,20 @@ mod tests {
             "Date: 15/08/1990, Time: 11:00 AM, UTC Offset: 1.00"
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_update_non_existent_client_returns_zero_affected_rows() -> Result<()> {
+        let conn = init_test_db()?;
+
+        let non_existent_id = 99999;
+        let rows = conn.execute(
+            "UPDATE Clients SET name = ? WHERE id = ?",
+            params!["Non Existent", non_existent_id],
+        )?;
+
+        assert_eq!(rows, 0);
         Ok(())
     }
 
@@ -632,22 +649,36 @@ fn edit_client(conn: &Connection) -> Result<()> {
                 Some(s) => s,
                 None => return Ok(()),
             };
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET name = ? WHERE id = ?",
                 params![new_name, id],
             )?;
-            println!("Client Name updated successfully.");
+            if rows == 0 {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            } else {
+                println!("Client Name updated successfully.");
+            }
         }
         1 => {
             let new_city = match prompt_input("Enter new City") {
                 Some(s) => s,
                 None => return Ok(()),
             };
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET city = ? WHERE id = ?",
                 params![new_city, id],
             )?;
-            println!("Client City updated successfully.");
+            if rows == 0 {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            } else {
+                println!("Client City updated successfully.");
+            }
         }
         2 => {
             let new_dob = loop {
@@ -666,11 +697,18 @@ fn edit_client(conn: &Connection) -> Result<()> {
                         .red()
                 );
             };
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET dob = ? WHERE id = ?",
                 params![new_dob, id],
             )?;
-            println!("Client DOB updated successfully.");
+            if rows == 0 {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            } else {
+                println!("Client DOB updated successfully.");
+            }
         }
         3 => {
             let new_time = loop {
@@ -690,11 +728,18 @@ fn edit_client(conn: &Connection) -> Result<()> {
                     .red()
                 );
             };
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET time = ? WHERE id = ?",
                 params![new_time, id],
             )?;
-            println!("Client Time of Birth updated successfully.");
+            if rows == 0 {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            } else {
+                println!("Client Time of Birth updated successfully.");
+            }
         }
         4 => {
             let status_options = &["Active", "Refused"];
@@ -703,11 +748,18 @@ fn edit_client(conn: &Connection) -> Result<()> {
                 None => return Ok(()),
             };
             let new_status = status_options[status_selection];
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET status = ? WHERE id = ?",
                 params![new_status, id],
             )?;
-            println!("Client Status updated to '{}' successfully.", new_status);
+            if rows == 0 {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            } else {
+                println!("Client Status updated to '{}' successfully.", new_status);
+            }
         }
         _ => unreachable!(),
     }
@@ -1004,13 +1056,7 @@ async fn execute_reading_flow(
         "Whole Sign (Required for Standard Vedic)",
     ];
 
-    // Added fully qualified dialoguer just in case, though Select is imported.
-    let house_selection = Select::new()
-        .with_prompt("Select House System")
-        .items(house_options)
-        .default(1) // Default to Whole Sign
-        .interact()
-        .unwrap_or(1);
+    let house_selection = prompt_select("Select House System", house_options, 1).unwrap_or(1);
 
     let selected_house_system = match house_selection {
         0 => math::HouseSystem::Placidus,
