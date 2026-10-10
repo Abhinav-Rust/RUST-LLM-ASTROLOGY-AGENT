@@ -137,9 +137,11 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         <style>\n\
         :root {{ --primary: #1e293b; --accent: #6366f1; --bg: #f8fafc; --card-bg: #ffffff; --text: #334155; --border: #e2e8f0; }}\n\
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 860px; margin: 40px auto; line-height: 1.8; color: var(--text); padding: 24px; background-color: var(--bg); }}\n\
-        .no-print {{ margin-bottom: 16px; text-align: right; }}\n\
-        .copy-btn {{ background-color: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background-color 0.2s ease; }}\n\
+        .no-print {{ margin-bottom: 16px; text-align: right; display: flex; justify-content: flex-end; gap: 8px; }}\n\
+        .copy-btn, .print-btn {{ background-color: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background-color 0.2s ease; }}\n\
+        .print-btn {{ background-color: #475569; }}\n\
         .copy-btn:hover {{ background-color: #4f46e5; }}\n\
+        .print-btn:hover {{ background-color: #334155; }}\n\
         .header {{ background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; padding: 32px; border-radius: 12px 12px 0 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}\n\
         .header h1 {{ margin: 0 0 8px 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; color: #ffffff; }}\n\
         .header .meta {{ font-size: 14px; color: #c7d2fe; opacity: 0.9; }}\n\
@@ -161,6 +163,7 @@ pub fn generate_html_report(name: &str, reading: &str) -> String {
         </style>\n</head>\n<body>\n\
         <div class=\"no-print\">\n\
         <button class=\"copy-btn\" onclick=\"navigator.clipboard.writeText(document.querySelector('.content').innerText).then(() => alert('Reading copied to clipboard!'))\">📋 Copy Reading</button>\n\
+        <button class=\"print-btn\" onclick=\"window.print()\">🖨️ Print / Save PDF</button>\n\
         </div>\n\
         <div class=\"header\">\n\
         <h1>Vedic Astrological Analysis</h1>\n\
@@ -272,5 +275,7 @@ mod tests {
         assert!(html.contains("<p>Line 1<br>\nLine 2 &amp; &lt;More&gt;</p>"));
         assert!(html.contains("@media print"));
         assert!(html.contains("📋 Copy Reading"));
+        assert!(html.contains("🖨️ Print / Save PDF"));
+        assert!(html.contains("window.print()"));
     }
 }
