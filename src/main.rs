@@ -151,6 +151,78 @@ fn view_client_reading_history(conn: &Connection) -> Result<()> {
         println!("{}", "-".repeat(60));
     }
 
+    let export = prompt_confirm(
+        "Would you like to export and preview any reading as an HTML report in your browser?",
+        false,
+    )
+    .unwrap_or(false);
+
+    if export {
+        let reading_options: Vec<String> = readings
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let q_chars: Vec<char> = r.question.chars().collect();
+                let q_trunc = if q_chars.len() > 40 {
+                    format!("{}...", q_chars[..37].iter().collect::<String>())
+                } else {
+                    r.question.clone()
+                };
+                format!("#{} ({}) - {}", readings.len() - i, r.timestamp, q_trunc)
+            })
+            .collect();
+
+        let option_refs: Vec<&str> = reading_options.iter().map(|s| s.as_str()).collect();
+
+        if let Some(selected_idx) =
+            prompt_select("Select reading to export to HTML", &option_refs, 0)
+        {
+            let selected_reading = &readings[selected_idx];
+            let html_content = utils::generate_html_report(
+                &target_client.name,
+                &selected_reading.full_ai_response,
+            );
+
+            let clean_name = utils::sanitize_filename(&target_client.name);
+            let filename = format!(
+                "{}_history_reading_{}.html",
+                clean_name, selected_reading.id
+            );
+
+            if std::fs::create_dir_all("readings").is_ok() {
+                let mut absolute_path = match std::env::current_dir() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Failed to get current directory: {}", e);
+                        return Ok(());
+                    }
+                };
+                absolute_path.push("readings");
+                absolute_path.push(&filename);
+
+                if let Err(e) = std::fs::write(&absolute_path, html_content) {
+                    eprintln!("Failed to write HTML report to file: {}", e);
+                } else {
+                    println!(
+                        "Report exported successfully! Opening in browser: {}",
+                        absolute_path.display()
+                    );
+                    if let Err(e) = open::that(&absolute_path) {
+                        println!(
+                            "{}",
+                            style(format!(
+                                "[!] Warning: Could not open HTML report automatically ({}) at {}",
+                                e,
+                                absolute_path.display()
+                            ))
+                            .yellow()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -368,7 +440,8 @@ mod tests {
         )?;
         assert_eq!(count_readings, 1);
 
-        delete_client_record(&mut conn, client_id)?;
+        let deleted_rows = delete_client_record(&mut conn, client_id)?;
+        assert_eq!(deleted_rows, 1);
 
         let count_clients_after: i64 = conn.query_row(
             "SELECT COUNT(*) FROM Clients WHERE id = ?",
@@ -383,6 +456,10 @@ mod tests {
             |r| r.get(0),
         )?;
         assert_eq!(count_readings_after, 0);
+
+        // Attempting to delete non-existent ID returns 0 affected rows
+        let nonexistent_delete = delete_client_record(&mut conn, 9999)?;
+        assert_eq!(nonexistent_delete, 0);
 
         Ok(())
     }
@@ -632,22 +709,36 @@ fn edit_client(conn: &Connection) -> Result<()> {
                 Some(s) => s,
                 None => return Ok(()),
             };
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET name = ? WHERE id = ?",
                 params![new_name, id],
             )?;
-            println!("Client Name updated successfully.");
+            if rows > 0 {
+                println!("Client Name updated successfully.");
+            } else {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            }
         }
         1 => {
             let new_city = match prompt_input("Enter new City") {
                 Some(s) => s,
                 None => return Ok(()),
             };
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET city = ? WHERE id = ?",
                 params![new_city, id],
             )?;
-            println!("Client City updated successfully.");
+            if rows > 0 {
+                println!("Client City updated successfully.");
+            } else {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            }
         }
         2 => {
             let new_dob = loop {
@@ -666,11 +757,18 @@ fn edit_client(conn: &Connection) -> Result<()> {
                         .red()
                 );
             };
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET dob = ? WHERE id = ?",
                 params![new_dob, id],
             )?;
-            println!("Client DOB updated successfully.");
+            if rows > 0 {
+                println!("Client DOB updated successfully.");
+            } else {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            }
         }
         3 => {
             let new_time = loop {
@@ -690,11 +788,18 @@ fn edit_client(conn: &Connection) -> Result<()> {
                     .red()
                 );
             };
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET time = ? WHERE id = ?",
                 params![new_time, id],
             )?;
-            println!("Client Time of Birth updated successfully.");
+            if rows > 0 {
+                println!("Client Time of Birth updated successfully.");
+            } else {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            }
         }
         4 => {
             let status_options = &["Active", "Refused"];
@@ -703,23 +808,30 @@ fn edit_client(conn: &Connection) -> Result<()> {
                 None => return Ok(()),
             };
             let new_status = status_options[status_selection];
-            conn.execute(
+            let rows = conn.execute(
                 "UPDATE Clients SET status = ? WHERE id = ?",
                 params![new_status, id],
             )?;
-            println!("Client Status updated to '{}' successfully.", new_status);
+            if rows > 0 {
+                println!("Client Status updated to '{}' successfully.", new_status);
+            } else {
+                println!(
+                    "{}",
+                    style(format!("No client found with ID {}.", id)).red()
+                );
+            }
         }
         _ => unreachable!(),
     }
     Ok(())
 }
 
-fn delete_client_record(conn: &mut Connection, id: i64) -> Result<()> {
+fn delete_client_record(conn: &mut Connection, id: i64) -> Result<usize> {
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM Readings WHERE client_id = ?", params![id])?;
-    tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
+    let affected = tx.execute("DELETE FROM Clients WHERE id = ?", params![id])?;
     tx.commit()?;
-    Ok(())
+    Ok(affected)
 }
 
 fn delete_client(conn: &mut Connection) -> Result<()> {
@@ -741,8 +853,15 @@ fn delete_client(conn: &mut Connection) -> Result<()> {
     .unwrap_or(false);
 
     if confirmed {
-        delete_client_record(conn, id)?;
-        println!("Client and associated records deleted permanently.");
+        let deleted_count = delete_client_record(conn, id)?;
+        if deleted_count > 0 {
+            println!("Client and associated records deleted permanently.");
+        } else {
+            println!(
+                "{}",
+                style(format!("No client record found with ID {}.", id)).red()
+            );
+        }
     } else {
         println!("Deletion cancelled.");
     }
